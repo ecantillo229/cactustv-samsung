@@ -640,8 +640,8 @@ input.focused, input:focus { border-color: #3FA34D; background: #1d3828; }
 .lb-s { color: #b9c9b0; }
 
 /* ---- Tema CactusNet TV (opción Local): elementos de cada marca ---- */
-html:not(.theme-cn) .cn-only { display: none !important; }
-html.theme-cn .cac-only { display: none !important; }
+html:not(.is-local) .cn-only { display: none !important; }
+html.is-local .cac-only { display: none !important; }
 .watermark .wm-fix { height: 88px; width: auto; display: block; }
 .mode-mobile .watermark .wm-fix { height: 44px; }
 

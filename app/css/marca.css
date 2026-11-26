@@ -1,0 +1,15 @@
+/* CactusNet 2.1 — fuera de la red de CactusNet (sin html.is-local): logo normal de CactusNet,
+   fondo del inicio de sesión sin "TV" y logo animado con el símbolo. Va después de cn.css. */
+html.theme-cn:not(.is-local) #login, html.theme-cn:not(.is-local).mode-mobile.o-land #login { background-image: url(../img/cn/bg-login-gen.jpg); }
+html.theme-cn:not(.is-local).mode-mobile.kb.o-land #login, html.theme-cn:not(.is-local).mode-mobile.kb.o-port #login,
+html.theme-cn:not(.is-local).mode-mobile.o-port #login { background-image: url(../img/cn/bg-menu-mob.jpg); }
+
+/* logo animado: el símbolo gira y se abre el logo completo de CactusNet */
+.watermark .wm-ico { width: auto; max-width: 110px; opacity: 1;
+  -webkit-transition: -webkit-transform .8s ease-in-out, opacity .5s, max-width .7s; transition: transform .8s ease-in-out, opacity .5s, max-width .7s; }
+.watermark .wm-txt { height: 88px; width: auto; max-width: 0; margin-right: 0; font-size: 0; line-height: 0; }
+.watermark.open .wm-ico { opacity: 0; max-width: 0; }
+.watermark.open .wm-txt { max-width: 260px; margin-right: 0; }
+.mode-mobile .watermark .wm-ico { max-width: 56px; }
+.mode-mobile .watermark .wm-txt { height: 44px; }
+.mode-mobile .watermark.open .wm-txt { max-width: 130px; margin-right: 0; }

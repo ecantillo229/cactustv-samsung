@@ -1,10 +1,11 @@
 {
-  "versionCode": 29,
-  "versionName": "2.0",
-  "tag": "v2.0",
+  "versionCode": 30,
+  "versionName": "2.1",
+  "tag": "main",
   "styles": [
     "css/app.css",
-    "css/cn.css"
+    "css/cn.css",
+    "css/marca.css"
   ],
   "scripts": [
     "platform/tizen.js",
@@ -15,10 +16,10 @@
   ],
   "history": [
     {
-      "versionCode": 29,
-      "versionName": "2.0",
+      "versionCode": 30,
+      "versionName": "2.1",
       "changes": [
-        "Tu app se actualizó a la versión 2.0. ¡Sigue disfrutando de tus canales!"
+        "Tu app ahora se llama CactusNet y se actualizó a la versión 2.1. ¡Sigue disfrutando de tus canales!"
       ]
     }
   ]

@@ -8,7 +8,7 @@
   /* ============================ CONFIGURACIÓN ============================ */
   var CONFIG = {
     server: 'http://10.0.2.5:25461', // servidor "Local": solo aparece en el inicio de sesión si responde
-    version: '2.0',
+    version: '2.1',
     // Archivo con la última versión publicada (ver README → "Publicar una actualización").
     updateUrl: 'https://github.com/ecantillo229/cactustv/releases/latest/download/version.json',
     // Anuncios: imágenes de la carpeta "anuncios" del repositorio cactustv (lista generada por GitHub)
@@ -214,8 +214,10 @@
   function setTheme(cn) {
     cn = !!cn || !!window.CACTUS_FORCE_CN;
     if (TH.cn === cn) return;
-    TH.cn = cn; htmlCls('theme-cn', cn);
-    document.title = cn ? 'CactusNet TV' : 'Cactus';
+    // 2.1: la app se llama CactusNet y siempre usa los colores de CactusNet (html.theme-cn).
+    // html.is-local = en la red de CactusNet (opción Local): logo de CactusNet TV, teléfonos, anuncios.
+    TH.cn = cn; htmlCls('theme-cn', true); htmlCls('is-local', cn);
+    document.title = cn ? 'CactusNet TV' : 'CactusNet';
   }
   function supportMsg() { return TH.cn ? CONFIG.supportCn : CONFIG.support; }
 
@@ -1448,7 +1450,9 @@
       out.push({ id: 'pinoff', name: 'Quitar PIN' });
     }
     if (hasAndroidPlayer()) out.push({ id: 'andplayer', name: 'Reproductor: ' + PLAYER_NAMES[playerMode()] });
-    var nb = 0, vb = vlcBad(); for (var kb in vb) if (vb.hasOwnProperty(kb)) nb++;
+    var nb = 0, vb = vlcBad(), vs = vlcSw(), kb;
+    for (kb in vb) if (vb.hasOwnProperty(kb)) nb++;
+    for (kb in vs) if (vs.hasOwnProperty(kb) && !vb.hasOwnProperty(kb)) nb++;
     if (hasVlc() && nb) out.push({ id: 'vlcbad', name: 'Volver a probar VLC en ' + nb + (nb === 1 ? ' canal' : ' canales') });
     // Samsung Orsay: elegir el motor de video del TV (Clásico o SEF; SEF permite cambiar el idioma)
     if (window.CactusNative && window.CactusNative.engines) {
@@ -1517,7 +1521,7 @@
       case 'reload': startSession(S.profile, false); return;
       case 'update': checkUpdate(true); return;
       case 'logout': logout(); return;
-      case 'vlcbad': store.del('iptv.vlcBad'); toast('Esos canales vuelven a abrir con VLC'); break;
+      case 'vlcbad': store.del('iptv.vlcBad'); store.del('iptv.vlcSw'); toast('Esos canales vuelven a abrir con VLC'); break;
     }
     store.set('iptv.settings', S.settings);
     refreshSettings();
@@ -1576,6 +1580,8 @@
     // canales que con VLC se quedaron negros, congelados o sin sonido: se abren con el reproductor de Android
     if (mode === 'vlc' && vlcBad()[String(P.item.id)]) { add(false); add(true); }
     else if (mode === 'vlc') { add(true); add(false); }
+    // canales que con el chip de video se congelaron: VLC los abre por software desde el principio
+    if (vlcSw()[String(P.item.id)]) plan.forEach(function (st) { if (st.vlc) st.sw = true; });
     else if (mode === 'android') { add(false); if (hasVlc()) add(true); }
     if (xtLive) {
       var first = S.settings.liveFmt === 'ts' ? asTs(url) : asHls(asTs(url));
@@ -1602,7 +1608,7 @@
 
   function stepName(s) {
     var f = /\.m3u8(\?|$)/i.test(s.url) ? 'HLS' : (/\.ts(\?|$)/i.test(s.url) ? 'TS' : 'archivo');
-    return (s.vlc ? 'VLC' : (s.engine === 'android' ? natName() : 'Web')) + ' ' + f;
+    return (s.vlc ? (s.sw ? 'VLC software' : 'VLC') : (s.engine === 'android' ? natName() : 'Web')) + ' ' + f;
   }
   // Muestra en la barra del canal qué reproductor quedó y qué intentos fallaron (diagnóstico).
   function showEngine() {
@@ -1614,7 +1620,7 @@
   function loadStep() {
     var s = P.plan[P.step];
     P.engine = s.engine;
-    if (s.engine === 'android') loadAndroid(s.url, s.vlc); else load(s.url);
+    if (s.engine === 'android') loadAndroid(s.vlc && s.sw ? s.url + '#sw' : s.url, s.vlc); else load(s.url);
   }
 
   // Si el reproductor nativo no muestra imagen en 15 s, se pasa al siguiente intento.
@@ -1625,10 +1631,23 @@
   }
 
   /* ---- VLC: canal negro, congelado o sin sonido (2.0) ----
-     El vigilante de VLC (en su propio hilo, sin revisar los primeros 10 s) avisa con -1002 congelado,
-     -1004 sin sonido o -1005 negro. El canal pasa enseguida al reproductor de Android y se recuerda. */
+     El vigilante de VLC (en su propio hilo, sin revisar los primeros 5 s) avisa con -1002 congelado,
+     -1004 sin sonido o -1005 negro. Congelado o negro: primero VLC por software; si no, reproductor de Android. */
   var VLC_BAD = { '-1002': 'imagen congelada', '-1004': 'sin sonido', '-1005': 'pantalla negra' };
   function vlcBad() { return store.get('iptv.vlcBad', {}); }
+  function vlcSw() { return store.get('iptv.vlcSw', {}); }
+  // Imagen congelada o negra con el chip de video: primero se reabre el mismo canal en VLC por software
+  // (sin el chip) y se recuerda; si por software también falla, pasa al reproductor de Android.
+  function vlcToSoftware(n) {
+    var s = P.plan[P.step];
+    if (P.item && P.item.type === 'live') { var w = vlcSw(); w[String(P.item.id)] = Date.now(); store.set('iptv.vlcSw', w); }
+    clearTimeout(P.dog);
+    P.trail.push(stepName(s) + ' ✗ ' + VLC_BAD[n]);
+    stopEngines();
+    P.plan.forEach(function (st) { if (st.vlc) st.sw = true; });
+    P.retries = 0;
+    loadStep();
+  }
   function vlcToAndroid(n) {
     var s = P.plan[P.step], to = -1;
     for (var i = P.step + 1; i < P.plan.length; i++) if (P.plan[i].engine === 'android' && !P.plan[i].vlc) { to = i; break; }
@@ -1671,6 +1690,7 @@
       P.buffering = true;
     } else if (ev === 'error') {
       var st = P.plan && P.plan[P.step];
+      if (st && st.vlc && !st.sw && (+n === -1002 || +n === -1005)) { vlcToSoftware(String(n)); return; }
       if (st && st.vlc && (VLC_BAD[String(n)] || String(n) === '-1003')) { vlcToAndroid(String(n)); return; }
       fail('código ' + n);
     } else if (ev === 'ended') {
@@ -2524,7 +2544,7 @@
      Si la app corre desde esa copia y le faltan sus imágenes/fuentes, se toman del repositorio en GitHub (PNG). */
   function fixAssets() {
     if (!window.CACTUS_BOOT || !window.CACTUS_BOOT.repo) return;
-    var base = 'https://raw.githubusercontent.com/' + window.CACTUS_BOOT.repo + '/v' + CONFIG.version + '/app/';
+    var base = 'https://raw.githubusercontent.com/' + window.CACTUS_BOOT.repo + '/main/app/';   // 2.1: imágenes de respaldo desde main
     var probe = new Image();
     probe.onload = function () {};
     probe.onerror = function () {
@@ -2532,13 +2552,15 @@
       var css = '', fw = { Regular: 400, SemiBold: 600, Bold: 700, ExtraBold: 800, Black: 900 };
       for (var w in fw) css += '@font-face{font-family:"Nunito";font-weight:' + fw[w] + ';src:url("' + base + 'fonts/Nunito-' + w + '.ttf")}';
       css += '#login{background-image:url("' + base + 'img/bg-login-tv.jpg")}#browser{background-image:url("' + base + 'img/bg-menu-tv.jpg")}';
-      css += 'html.theme-cn #login{background-image:url("' + base + 'img/cn/bg-login-tv.jpg")}html.theme-cn #browser{background-image:url("' + base + 'img/cn/bg-menu-tv.jpg")}';
+      css += 'html.theme-cn:not(.is-local) #login{background-image:url("' + base + 'img/cn/bg-login-gen.jpg")}';
+      css += 'html.theme-cn.is-local #login{background-image:url("' + base + 'img/cn/bg-login-tv.jpg")}html.theme-cn #browser{background-image:url("' + base + 'img/cn/bg-menu-tv.jpg")}';
       var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
     };
     probe.src = 'img/cactus-logo.png';
   }
 
-  /* Logo animado (abajo a la derecha): cada 5 min el rombo gira y "Cactus" sale por 4 s; luego vuelve a ser solo el rombo */
+  /* Logo animado (abajo a la derecha, fuera de Local): cada 5 min el símbolo de CactusNet gira y se abre el logo
+     completo por 4 s; luego vuelve a ser solo el símbolo */
   var WM = { EVERY: 300000, SHOW: 4000, deg: 0, last: 0, busy: false };
   function wmSpin(el) { WM.deg += 360; var t = 'rotate(' + WM.deg + 'deg)'; el.style.webkitTransform = t; el.style.transform = t; }
   function wmTick() {
@@ -2647,7 +2669,7 @@
       var bn = window.__cactusBootNotes; window.__cactusBootNotes = null;
       setTimeout(function () {
         if (M.open) return;
-        openModal({ kind: 'info', title: 'Cactus se actualizó a la versión ' + CONFIG.version, text: bn,
+        openModal({ kind: 'info', title: 'CactusNet se actualizó a la versión ' + CONFIG.version, text: bn,
           buttons: [{ label: 'Entendido', fn: closeModal, primary: true }] });
       }, 2500);
     }
@@ -2741,7 +2763,7 @@
       kind: 'info', locked: !!info.force,
       title: 'Nueva versión ' + (info.versionName || ''),
       text: updateNotes(info) +
-        (info.force ? 'Esta actualización es necesaria para seguir usando Cactus.' : 'Tienes la versión ' + CONFIG.version + '. ¿Quieres actualizar ahora?'),
+        (info.force ? 'Esta actualización es necesaria para seguir usando CactusNet.' : 'Tienes la versión ' + CONFIG.version + '. ¿Quieres actualizar ahora?'),
       buttons: btns
     });
   }
@@ -2756,7 +2778,7 @@
   function downloadUpdate(info) {
     U.busy = true;
     var btns = info.force ? [] : [{ label: 'Cancelar', fn: function () { if (U.xhr) U.xhr.abort(); U.busy = false; U.xhr = null; closeModal(); } }];
-    openModal({ kind: 'info', locked: true, title: 'Descargando Cactus ' + (info.versionName || ''), text: 'Preparando…', buttons: btns });
+    openModal({ kind: 'info', locked: true, title: 'Descargando CactusNet ' + (info.versionName || ''), text: 'Preparando…', buttons: btns });
     var opt = M.opt;
     var x = U.xhr = new XMLHttpRequest();
     x.open('GET', bust(info.apk), true);
@@ -2803,7 +2825,7 @@
                           : [{ label: 'Abrir instalador otra vez', fn: function () { nat('installUpdate'); } }, { label: 'Cerrar', fn: closeModal }];
     openModal({
       kind: 'info', locked: !!info.force, title: 'Instala la actualización',
-      text: 'Se abrió el instalador de Android: elige Instalar / Actualizar. Si te pide permitir instalar apps de Cactus, actívalo y vuelve atrás.',
+      text: 'Se abrió el instalador de Android: elige Instalar / Actualizar. Si te pide permitir instalar apps de CactusNet, actívalo y vuelve atrás.',
       buttons: btns
     });
   }

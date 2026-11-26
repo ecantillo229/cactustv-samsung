@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Cactus</title>
+<title>CactusNet</title>
 <link rel="stylesheet" href="css/app.css">
 <link rel="stylesheet" href="css/cn.css">
+<link rel="stylesheet" href="css/marca.css">
 <script src="$WEBAPIS/webapis/webapis.js"></script>
 </head>
 <body>
@@ -13,8 +14,8 @@
 <!-- ============ PRIMER INICIO: ELEGIR MODO ============ -->
 <div id="chooser" class="screen hidden">
   <div class="chooser-box">
-    <img class="cn-logo cac-only" src="img/cactus-logo.png" alt="Cactus"><img class="cn-logo cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV">
-    <div class="chooser-q">¿Dónde vas a usar <span class="cac-only">Cactus</span><span class="cn-only">CactusNet TV</span>?</div>
+    <img class="cn-logo cac-only" src="img/cn/logo-cactusnet.svg" alt="CactusNet"><img class="cn-logo cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV">
+    <div class="chooser-q">¿Dónde vas a usar <span class="cac-only">CactusNet</span><span class="cn-only">CactusNet TV</span>?</div>
     <div class="chooser-opts">
       <div class="opt f" data-mode="mobile">
         <svg viewBox="0 0 24 24"><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 3v13h10V5zm4 14.5h2v1.2h-2z"/></svg>
@@ -33,9 +34,9 @@
 
 <!-- ============ LOGIN ============ -->
 <div id="login" class="screen hidden">
-  <div class="login-brand"><img class="cac-only" src="img/cactus-logo.png" alt="Cactus"><img class="cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV"><div class="lb-t">Tus canales en vivo</div><div class="lb-s"><span class="cac-only">Servidor local, Xtream o lista M3U</span><span class="cn-only">Exclusivo para clientes CactusNet</span></div></div>
+  <div class="login-brand"><img class="cac-only" src="img/cn/logo-cactusnet.svg" alt="CactusNet"><img class="cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV"><div class="lb-t">Tus canales en vivo</div><div class="lb-s"><span class="cac-only">Reproductor IPTV · Xtream o lista M3U</span><span class="cn-only">Exclusivo para clientes CactusNet</span></div></div>
   <div class="login-box">
-    <img class="cn-logo cac-only" src="img/cactus-logo.png" alt="Cactus"><img class="cn-logo cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV">
+    <img class="cn-logo cac-only" src="img/cn/logo-cactusnet.svg" alt="CactusNet"><img class="cn-logo cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV">
     <div class="login-title">Inicia sesión</div>
     <div class="login-sub" id="loginSub">Usa el usuario y la contraseña de tu servicio de TV.</div>
     <div id="ltabs" class="ltabs f"><div class="ltab" data-m="local">Local</div><div class="ltab" data-m="xtream">Xtream</div><div class="ltab" data-m="m3u">Lista M3U</div></div>
@@ -54,11 +55,11 @@
 <!-- ============ NAVEGADOR ============ -->
 <div id="browser" class="screen hidden">
   <div class="mtop">
-    <img class="mlogo cac-only" src="img/cactus-logo.png" alt="Cactus"><img class="mlogo cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV">
+    <img class="mlogo cac-only" src="img/cn/logo-cactusnet.svg" alt="CactusNet"><img class="mlogo cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV">
     <div class="mclock" id="mclock"></div>
   </div>
   <div class="col col-sec">
-    <img class="cn-side cac-only" src="img/cactus-logo.png" alt="Cactus"><img class="cn-side cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV">
+    <img class="cn-side cac-only" src="img/cn/logo-cactusnet.svg" alt="CactusNet"><img class="cn-side cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV">
     <div class="list" id="listSec"></div>
     <div class="side-foot"><div class="clock" id="clock"></div><div class="date" id="cdate"></div></div>
   </div>
@@ -102,7 +103,7 @@
 </div>
 <div id="player" class="screen hidden">
   <video id="video" preload="auto" playsinline webkit-playsinline poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></video>
-  <div id="wm" class="watermark"><span class="wm-txt cac-only">Cactus</span><img class="wm-ico cac-only" src="img/cactus-icon.svg" alt=""><img class="wm-fix cn-only" src="img/cn/cactusnet-wm.svg" alt=""></div>
+  <div id="wm" class="watermark"><img class="wm-ico cac-only" src="img/cn/simbolo.svg" alt=""><img class="wm-txt cac-only" src="img/cn/logo-cactusnet-sin.svg" alt="CactusNet"><img class="wm-fix cn-only" src="img/cn/cactusnet-wm.svg" alt=""></div>
   <div id="ad" class="adbar img hidden"><img id="adImg" class="ad-img" alt=""><video id="adVid" class="ad-img ad-vid" muted playsinline preload="auto" poster="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEAAAAALAAAAAABAAEAAAIBAAA="></video></div>
   <div id="spinner" class="spinner hidden"></div>
   <div id="playerMsg" class="player-msg"></div>
@@ -162,13 +163,13 @@
   </div>
 </div>
 
-<div id="loading" class="loading hidden"><img class="cn-load cac-only" src="img/cactus-logo.png" alt="Cactus"><img class="cn-load cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV"><div class="lbar"><div class="lbar-in"></div></div><div id="loadingText">Cargando…</div></div>
+<div id="loading" class="loading hidden"><img class="cn-load cac-only" src="img/cn/logo-cactusnet.svg" alt="CactusNet"><img class="cn-load cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV"><div class="lbar"><div class="lbar-in"></div></div><div id="loadingText">Cargando…</div></div>
 <div id="toast" class="toast hidden"></div>
 <div id="numBox" class="numbox hidden"></div>
 <div id="netBadge" class="netbadge"><span class="nb-dot"></span>Conectado por IP pública</div>
 
 <script src="js/flavor.js"></script>
-<script>window.CACTUS_BOOT = {"build": 29, "repo": "ecantillo229/cactustv-samsung", "scripts": ["platform/tizen.js", "lib/hls.min.js", "js/sha256.js", "js/sources.js", "js/app.js"]};</script>
+<script>window.CACTUS_BOOT = {"build": 30, "repo": "ecantillo229/cactustv-samsung", "scripts": ["platform/tizen.js", "lib/hls.min.js", "js/sha256.js", "js/sources.js", "js/app.js"]};</script>
 <script src="platform/boot.js"></script>
 </body>
 </html>
