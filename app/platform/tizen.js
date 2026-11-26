@@ -1,4 +1,4 @@
-/* CactusNet TV — adaptador para Samsung (Tizen).
+/* Cactus — adaptador para Samsung (Tizen).
    Se carga antes de app.js solo en la versión de Samsung.
    - Registra las teclas del control (colores, CH+/−, multimedia, Info) y traduce las propias de Samsung.
    - Ofrece window.CactusNative con el reproductor AVPlay de Samsung (decodificador del TV: MPEG-2,
@@ -10,6 +10,7 @@
 
   // ---- Teclas ----
   var keys = ['ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue', 'ChannelUp', 'ChannelDown',
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
     'MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaRewind', 'MediaFastForward', 'Info'];
   try { tizen.tvinputdevice.registerKeyBatch(keys); }
   catch (e) { for (var i = 0; i < keys.length; i++) { try { tizen.tvinputdevice.registerKey(keys[i]); } catch (e2) {} } }

@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
-<title>CactusNet TV</title>
+<title>Cactus</title>
 <link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/cn.css">
 <script src="$WEBAPIS/webapis/webapis.js"></script>
 </head>
 <body>
@@ -12,8 +13,8 @@
 <!-- ============ PRIMER INICIO: ELEGIR MODO ============ -->
 <div id="chooser" class="screen hidden">
   <div class="chooser-box">
-    <img class="cn-logo" src="img/cactusnet.svg" alt="CactusNet">
-    <div class="chooser-q">¿Dónde vas a usar CactusNet TV?</div>
+    <img class="cn-logo cac-only" src="img/cactus-logo.png" alt="Cactus"><img class="cn-logo cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV">
+    <div class="chooser-q">¿Dónde vas a usar <span class="cac-only">Cactus</span><span class="cn-only">CactusNet TV</span>?</div>
     <div class="chooser-opts">
       <div class="opt f" data-mode="mobile">
         <svg viewBox="0 0 24 24"><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 3v13h10V5zm4 14.5h2v1.2h-2z"/></svg>
@@ -32,27 +33,34 @@
 
 <!-- ============ LOGIN ============ -->
 <div id="login" class="screen hidden">
+  <div class="login-brand"><img class="cac-only" src="img/cactus-logo.png" alt="Cactus"><img class="cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV"><div class="lb-t">Tus canales en vivo</div><div class="lb-s"><span class="cac-only">Servidor local, Xtream o lista M3U</span><span class="cn-only">Exclusivo para clientes CactusNet</span></div></div>
   <div class="login-box">
-    <img class="cn-logo" src="img/cactusnet.svg" alt="CactusNet">
-    <div class="login-sub">Ingresa con el usuario y la contraseña de tu servicio.</div>
-    <label>Usuario<input id="xUser" class="f" type="text" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
-    <label>Contraseña<input id="xPass" class="f" type="password" autocomplete="off"></label>
+    <img class="cn-logo cac-only" src="img/cactus-logo.png" alt="Cactus"><img class="cn-logo cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV">
+    <div class="login-title">Inicia sesión</div>
+    <div class="login-sub" id="loginSub">Usa el usuario y la contraseña de tu servicio de TV.</div>
+    <div id="ltabs" class="ltabs f"><div class="ltab" data-m="local">Local</div><div class="ltab" data-m="xtream">Xtream</div><div class="ltab" data-m="m3u">Lista M3U</div></div>
+    <label id="fServer" class="hidden">Servidor<input id="xServer" class="f" type="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="http://servidor:puerto"></label>
+    <label id="fUser">Usuario<input id="xUser" class="f" type="text" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+    <label id="fPass">Contraseña<span class="pw-wrap"><input id="xPass" class="f" type="password" autocomplete="off"><span id="btnEye" class="eye" title="Ver u ocultar la contraseña"><svg viewBox="0 0 24 24"><path class="eye-open" d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/><path class="eye-off" d="M12 7a5 5 0 0 1 5 5c0 .65-.13 1.26-.36 1.83l2.92 2.92A11.8 11.8 0 0 0 23 12c-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.8 11.8 0 0 0 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55A2.9 2.9 0 0 0 9 12a3 3 0 0 0 3 3c.22 0 .44-.03.65-.08l1.55 1.55A5 5 0 0 1 7.53 9.8zm4.31-.78l3.15 3.15.02-.16a3 3 0 0 0-3-3l-.17.01z"/></svg></span></span></label>
+    <div id="fSave" class="chk f hidden on"><span class="chk-box"><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg></span>Guardar credenciales</div>
+    <label id="fM3u" class="hidden">Enlace de la lista<input id="xM3u" class="f" type="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="http://…/lista.m3u"></label>
     <div id="btnConnect" class="btn f">Entrar</div>
     <div id="loginMsg" class="msg"></div>
-    <div class="login-hint tv-only">Usa las flechas del control y OK para escribir en cada campo.</div>
+    <div class="login-hint tv-only">◀ ▶ cambiar opción · ▲▼ elegir campo · OK escribir</div>
+    <div class="login-help cn-only">¿No tienes usuario? Escríbenos al <b class="nowrap">317 611 9013</b></div>
   </div>
 </div>
 
 <!-- ============ NAVEGADOR ============ -->
 <div id="browser" class="screen hidden">
   <div class="mtop">
-    <img class="mlogo" src="img/cactusnet.svg" alt="CactusNet">
+    <img class="mlogo cac-only" src="img/cactus-logo.png" alt="Cactus"><img class="mlogo cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV">
     <div class="mclock" id="mclock"></div>
   </div>
   <div class="col col-sec">
-    <img class="cn-side" src="img/cactusnet.svg" alt="CactusNet">
+    <img class="cn-side cac-only" src="img/cactus-logo.png" alt="Cactus"><img class="cn-side cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV">
     <div class="list" id="listSec"></div>
-    <div class="clock" id="clock"></div>
+    <div class="side-foot"><div class="clock" id="clock"></div><div class="date" id="cdate"></div></div>
   </div>
   <div class="col col-cat">
     <div class="col-title" id="catsTitle">Categorías</div>
@@ -60,22 +68,45 @@
   </div>
   <div class="col col-items">
     <div class="col-title" id="itemsTitle"></div>
+    <input id="searchBox" class="searchbox hidden" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Nombre o número del canal">
     <div class="list" id="listItems"></div>
     <div class="empty hidden" id="itemsEmpty"></div>
   </div>
   <div class="hintbar">
-    <span><i class="k ok">OK</i> Abrir</span>
+    <span><i class="k ok">OK</i> Ver canal</span>
     <span><i class="k red"></i> Favorito</span>
+    <span><i class="k">0–9</i> Ir al canal</span>
     <span><i class="k">CH ▲▼</i> Saltar 10</span>
     <span><i class="k">ATRÁS</i> Volver</span>
   </div>
 </div>
 
 <!-- ============ REPRODUCTOR ============ -->
+<!-- Servicio suspendido (Local): el MikroTik de CactusNet manda al cliente al portal cautivo de ColombiaWisp -->
+<div id="suspended" class="screen hidden">
+  <div class="sus-card">
+    <div class="sus-left">
+      <img class="sus-logo" src="img/cn/cactustv.svg" alt="CactusNet TV">
+      <div class="sus-ic"><svg viewBox="0 0 64 64"><rect x="6" y="10" width="52" height="34" rx="5"/><path d="M22 54h20M32 44v10"/><rect class="p" x="25" y="19" width="5" height="16" rx="1.5"/><rect class="p" x="34" y="19" width="5" height="16" rx="1.5"/></svg></div>
+      <div class="sus-t">Tu servicio está suspendido</div>
+      <div class="sus-x">Paga tu servicio para volver a ver tus canales y navegar.<br>La reconexión no tiene costo.</div>
+    </div>
+    <div class="sus-right">
+      <div class="sus-h">Paga por transferencia</div>
+      <div class="sus-acc"><div class="sa-k">Llave Bre-B</div><div class="sa-v">0050675537</div></div>
+      <div class="sus-acc"><div class="sa-k">Bancolombia · Cuenta de ahorros</div><div class="sa-v">724 0000 1685</div></div>
+      <div class="sus-wa">Envía el comprobante por WhatsApp al <b class="nowrap">317 611 9013</b></div>
+      <div class="sus-btns"><div id="susRetry" class="mbtn primary f">Reintentar</div><div id="susLogout" class="mbtn f">Cerrar sesión</div></div>
+    </div>
+  </div>
+</div>
 <div id="player" class="screen hidden">
   <video id="video" preload="auto" playsinline webkit-playsinline poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></video>
+  <div id="wm" class="watermark"><span class="wm-txt cac-only">Cactus</span><img class="wm-ico cac-only" src="img/cactus-icon.svg" alt=""><img class="wm-fix cn-only" src="img/cn/cactusnet-wm.svg" alt=""></div>
+  <div id="ad" class="adbar img hidden"><img id="adImg" class="ad-img" alt=""><video id="adVid" class="ad-img ad-vid" muted playsinline preload="auto" poster="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEAAAAALAAAAAABAAEAAAIBAAA="></video></div>
   <div id="spinner" class="spinner hidden"></div>
   <div id="playerMsg" class="player-msg"></div>
+  <div id="playerErr" class="player-err hidden"><div class="pe-ic"><svg viewBox="0 0 48 48"><rect x="5" y="8" width="38" height="26" rx="3"/><path d="M18 42h12M24 34v8M15 15l18 13"/></svg></div><div class="pe-t">Canal no disponible</div><div class="pe-x" id="playerErrText"></div><div class="pe-pill"><span class="cac-only">¿Persiste? Comunícate con tu proveedor de internet</span><span class="cn-only">¿Persiste? WhatsApp 317 611 9013</span></div><div class="pe-d" id="playerErrDiag"></div></div>
   <!-- lista de canales sobre el video (no detiene lo que se está viendo) -->
   <div id="chList" class="chlist hidden">
     <div class="chl-head">
@@ -90,6 +121,7 @@
   <div id="osd" class="osd hidden">
     <div class="osd-top">
       <span id="osdNum" class="osd-num"></span>
+      <span class="osd-live">EN VIVO</span>
       <span id="osdName" class="osd-name"></span>
       <span id="osdFav" class="osd-fav"></span>
       <span id="osdClock" class="osd-clock"></span>
@@ -130,10 +162,13 @@
   </div>
 </div>
 
-<div id="loading" class="loading hidden"><img class="cn-load" src="img/cactusnet.svg" alt="CactusNet"><div class="spinner"></div><div id="loadingText">Cargando…</div></div>
+<div id="loading" class="loading hidden"><img class="cn-load cac-only" src="img/cactus-logo.png" alt="Cactus"><img class="cn-load cn-only" src="img/cn/cactustv.svg" alt="CactusNet TV"><div class="lbar"><div class="lbar-in"></div></div><div id="loadingText">Cargando…</div></div>
 <div id="toast" class="toast hidden"></div>
+<div id="numBox" class="numbox hidden"></div>
+<div id="netBadge" class="netbadge"><span class="nb-dot"></span>Conectado por IP pública</div>
 
-<script>window.CACTUS_BOOT = {"build": 18, "repo": "ecantillo229/cactustv-samsung", "scripts": ["platform/tizen.js", "lib/hls.min.js", "js/sha256.js", "js/sources.js", "js/app.js"]};</script>
+<script src="js/flavor.js"></script>
+<script>window.CACTUS_BOOT = {"build": 29, "repo": "ecantillo229/cactustv-samsung", "scripts": ["platform/tizen.js", "lib/hls.min.js", "js/sha256.js", "js/sources.js", "js/app.js"]};</script>
 <script src="platform/boot.js"></script>
 </body>
 </html>

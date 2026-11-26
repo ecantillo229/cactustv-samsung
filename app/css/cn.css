@@ -1,0 +1,102 @@
+/* Tema CactusNet TV (opción Local). Generado por tools/gen_cn_css.py; no editar a mano. */
+html.theme-cn { background: #1C1C1C; }
+html.theme-cn body { background: #1C1C1C; color: #F3F5F1; }
+html.theme-cn #chooser { background: #1C1C1C; background-image: -webkit-radial-gradient(50% 0%, circle, #24331f 0%, #1C1C1C 55%); background-image: radial-gradient(circle at 50% 0%, #24331f 0%, #1C1C1C 55%); }
+html.theme-cn .opt { background: #262626; border: 0.6vmin solid #262626; }
+html.theme-cn .opt.focused { border-color: #5BBA44; background: #23301f; }
+html.theme-cn .opt.focused svg { fill: #5BBA44; }
+html.theme-cn #login { background: #1C1C1C url(../img/cn/bg-login-tv.jpg) no-repeat 0 0; background-size: 1920px 1080px; }
+html.theme-cn .login-box { background: rgba(24, 24, 24, 0.9); border: 1px solid #2f2f2f; }
+html.theme-cn label { color: #5BBA44; }
+html.theme-cn input { background: #262626; border: 3px solid #333333; }
+html.theme-cn input.focused, html.theme-cn input:focus { border-color: #5BBA44; background: #2a2a2a; }
+html.theme-cn .btn { background: #FF7F2A; color: #fff; }
+html.theme-cn .btn.focused { background: #5BBA44; box-shadow: 0 0 0 5px rgba(91, 186, 68, 0.35); }
+html.theme-cn .login-help { border-top: 1px solid #2f2f2f; }
+html.theme-cn .eye.on svg { fill: #5BBA44; }
+html.theme-cn #browser { background: #1C1C1C url(../img/cn/bg-menu-tv.jpg) no-repeat 0 0; background-size: 1920px 1080px; }
+html.theme-cn .col-sec { background: rgba(14, 14, 14, 0.78); }
+html.theme-cn .col-cat { border-right: 1px solid #2a2a2a; }
+html.theme-cn .col-title { color: #5BBA44; }
+html.theme-cn .row.selected { background: rgba(91, 186, 68, 0.14); box-shadow: inset 6px 0 0 #5BBA44; }
+html.theme-cn .row.focused { background: #5BBA44; }
+html.theme-cn .item .logo { background: #2a2a2a; }
+html.theme-cn .row.item.focused { background: #5BBA44; }
+html.theme-cn .item .star { color: #FF7F2A; }
+html.theme-cn .lock svg { fill: #FF7F2A; }
+html.theme-cn .empty.locked { color: #FF7F2A; }
+html.theme-cn .hintbar { background: rgba(12, 12, 12, 0.92); border-top: 1px solid #262626; }
+html.theme-cn .k { background: #333333; color: #F3F5F1; }
+html.theme-cn .osd { background: -webkit-linear-gradient(top, rgba(20,20,20,0) 0%, rgba(20,20,20,0.86) 48%, rgba(20,20,20,0.96) 100%); background: linear-gradient(to bottom, rgba(20,20,20,0) 0%, rgba(20,20,20,0.86) 48%, rgba(20,20,20,0.96) 100%); }
+html.theme-cn .osd-num { background: #5BBA44; }
+html.theme-cn .osd-live { color: #fff; background: #FF7F2A; }
+html.theme-cn .osd-fav { color: #FF7F2A; }
+html.theme-cn #osdBar { background: #5BBA44; }
+html.theme-cn .player-err { background: #1C1C1C; background-image: -webkit-radial-gradient(50% 42%, circle, #233322 0%, #1C1C1C 52%); background-image: radial-gradient(circle at 50% 42%, #233322 0%, #1C1C1C 52%); }
+html.theme-cn .pe-ic svg path:last-child { stroke: #FF7F2A; }
+html.theme-cn .pe-pill { background: #5BBA44; }
+html.theme-cn .spinner { border-top-color: #5BBA44; }
+html.theme-cn .loading { background: #1C1C1C; background-image: -webkit-radial-gradient(50% 45%, circle, #24331f 0%, #1C1C1C 50%); background-image: radial-gradient(circle at 50% 45%, #24331f 0%, #1C1C1C 50%); }
+html.theme-cn .lbar-in { background: -webkit-linear-gradient(left, #8DC63F, #2E9E46); background: linear-gradient(to right, #8DC63F, #2E9E46); }
+html.theme-cn .toast { background: #2a2a2a; border-left: 8px solid #5BBA44; }
+html.theme-cn .modal { background: rgba(12, 12, 12, 0.86); }
+html.theme-cn .modal-box { background: #232323; border-top: 8px solid #5BBA44; }
+html.theme-cn .m-code { color: #5BBA44; }
+html.theme-cn .m-dots span.on { background: #5BBA44; border-color: #5BBA44; }
+html.theme-cn .m-pad .k { background: #333333; }
+html.theme-cn .m-pad .k.focused { background: #5BBA44; }
+html.theme-cn .mbtn { background: #333333; border: 3px solid #333333; }
+html.theme-cn .mbtn.primary { background: #FF7F2A; border-color: #FF7F2A; color: #1C1C1C; }
+html.theme-cn .mbtn.focused { background: #5BBA44; border-color: #5BBA44; }
+html.theme-cn .chlist { background: rgba(22, 22, 22, 0.95); border-right: 1px solid #2a2a2a; }
+html.theme-cn .chl-arrow { color: #5BBA44; background: #2a2a2a; }
+html.theme-cn .chl-logo { background: #2a2a2a; }
+html.theme-cn .chl-star { color: #FF7F2A; }
+html.theme-cn .chl-live { color: #fff; background: #FF7F2A; }
+html.theme-cn .chl-row.now { background: rgba(91, 186, 68, 0.14); box-shadow: inset 6px 0 0 #5BBA44; }
+html.theme-cn .chl-row.focused, html.theme-cn .chl-row.now.focused { background: #5BBA44; }
+html.theme-cn .watermark .wm-txt { color: #fff; }
+html.theme-cn .netbadge { background: rgba(20,20,20,0.75); border: 1px solid rgba(255,127,42,0.6); }
+html.theme-cn .nb-dot { background: #FF7F2A; }
+html.theme-cn .numbox { background: rgba(20,20,20,0.9); border: 3px solid #5BBA44; }
+html.theme-cn .osk { background: #1f1f1f; border: 2px solid #5BBA44; }
+html.theme-cn .osk-val { background: #111; }
+html.theme-cn .osk-cur { color: #5BBA44; }
+html.theme-cn .osk-k { background: #333; }
+html.theme-cn .osk-k.on { background: #5BBA44; }
+html.theme-cn.mode-mobile #login { background: #1C1C1C url(../img/cn/bg-login-mob.jpg) no-repeat 50% 0; background-size: 100% auto; }
+html.theme-cn.mode-mobile .btn:active { background: #5BBA44; }
+html.theme-cn.mode-mobile #browser { background: #1C1C1C url(../img/cn/bg-menu-mob.jpg) no-repeat 0 0; background-size: cover; }
+html.theme-cn.mode-mobile .mtop { background: rgba(14,14,14,0.9); }
+html.theme-cn.mode-mobile .col-sec { background: rgba(14,14,14,0.96); border-top: 1px solid #262626; }
+html.theme-cn.mode-mobile #listSec .row.selected, html.theme-cn.mode-mobile #listSec .row.focused { color: #5BBA44; }
+html.theme-cn.mode-mobile #listCats .row { background: #2a2a2a; }
+html.theme-cn.mode-mobile #listCats .row.selected, html.theme-cn.mode-mobile #listCats .row.focused { background: #5BBA44; }
+html.theme-cn.mode-mobile .row.item.selected { background: rgba(91, 186, 68, 0.14); box-shadow: inset 4px 0 0 #5BBA44; }
+html.theme-cn.mode-mobile .row.item:active { background: #2f3b2b; }
+html.theme-cn.mode-mobile .favbtn.on { color: #FF7F2A; }
+html.theme-cn.mode-mobile.sec-settings #listCats .row { background: #262626; color: #F3F5F1; }
+html.theme-cn.mode-mobile.sec-settings #listCats .row.selected { background: #262626; color: #F3F5F1; }
+html.theme-cn.mode-mobile.sec-settings #listCats .row:active { background: #5BBA44; }
+html.theme-cn .mctl .mb.big { background: #5BBA44; }
+html.theme-cn .mctl .mb.on svg { fill: #FF7F2A; }
+html.theme-cn.mode-mobile .m-pad .k:active { background: #5BBA44; }
+html.theme-cn.mode-mobile .mbtn:active { background: #5BBA44; border-color: #5BBA44; }
+html.theme-cn.mode-mobile .chlist { border-left: 1px solid #2a2a2a; }
+html.theme-cn.mode-mobile .chl-row:active { background: #2f3b2b; }
+html.theme-cn.mode-mobile .mbtn.primary { background: #FF7F2A; }
+html.theme-cn.mode-mobile.o-land #login { background: #1C1C1C url(../img/cn/bg-login-tv.jpg) no-repeat 0 50%; background-size: cover; }
+html.theme-cn.mode-mobile.o-land .login-box { border-bottom: 1px solid #333333; }
+html.theme-cn.mode-mobile.o-port #login { background: #1C1C1C url(../img/cn/bg-menu-mob.jpg) no-repeat 50% 0; background-size: cover; }
+html.theme-cn .ltabs { background: #1f1f1f; }
+html.theme-cn .ltabs.focused { border-color: #5BBA44; }
+html.theme-cn .ltab { color: #cfcfcf; }
+html.theme-cn .ltab.on { background: #5BBA44; }
+html.theme-cn .login-box input::-webkit-input-placeholder { color: #6f6f6f; }
+html.theme-cn .login-box input::placeholder { color: #6f6f6f; }
+html.theme-cn .lb-s { color: #cfcfcf; }
+html.theme-cn .chk.focused { border-color: #5BBA44; }
+html.theme-cn .chk-box { border: 3px solid #333333; background: #262626; }
+html.theme-cn .chk.on .chk-box { background: #5BBA44; border-color: #5BBA44; }
+html.theme-cn.mode-mobile.kb.o-land #login, html.theme-cn.mode-mobile.kb.o-port #login { background: #1C1C1C url(../img/cn/bg-menu-mob.jpg) no-repeat 50% 0; background-size: cover; }
+html.theme-cn.mode-mobile.kb.o-land .login-box, html.theme-cn.mode-mobile.kb.o-port .login-box { border-bottom: 1px solid #333333; }

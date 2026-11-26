@@ -1,4 +1,4 @@
-/* CactusTV — interfaz, reproductor, control parental y modos TV / móvil.
+/* Cactus — interfaz, reproductor, control parental y modos TV / móvil.
    ES5 puro: funciona en LG webOS 3.x+ y en el WebView de Android 5+.
    En TV se maneja con control remoto (flechas, OK, ATRÁS, CH+/-, colores, números);
    en móvil, con toques. */
@@ -7,18 +7,29 @@
 
   /* ============================ CONFIGURACIÓN ============================ */
   var CONFIG = {
-    server: 'http://10.0.2.5:25461', // servidor Xtream de CactusNet (no se le pide al usuario)
-    version: '1.5.0',
+    server: 'http://10.0.2.5:25461', // servidor "Local": solo aparece en el inicio de sesión si responde
+    version: '2.0',
     // Archivo con la última versión publicada (ver README → "Publicar una actualización").
     updateUrl: 'https://github.com/ecantillo229/cactustv/releases/latest/download/version.json',
+    // Anuncios: imágenes de la carpeta "anuncios" del repositorio cactustv (lista generada por GitHub)
+    adsUrl: 'https://raw.githubusercontent.com/ecantillo229/cactustv/main/anuncios/lista.json',
     // Secciones que se muestran. Para volver a ofrecer películas y series: ['live', 'vod', 'series']
-    sections: ['live'],
+    sections: ['live'],             // Local: solo TV en vivo. Xtream y M3U: todo lo que tenga el servidor
     refreshAfterMin: 30,            // al volver a la app tras este tiempo, se actualizan los canales
-    supportPhone: '317 611 9013',     // se muestra en los mensajes de error
+    support: 'Comunícate con tu proveedor de internet.',   // mensajes de error con Xtream y M3U (sin teléfonos)
+    supportCn: 'Comunícate con CactusNet al 317 611 9013.',  // mensajes de error con Local (tema CactusNet TV)
+    // Cliente suspendido: el MikroTik lo manda al portal cautivo de ColombiaWisp. Si la consulta al servidor
+    // local devuelve una página que coincide con esto, se muestra la pantalla de "Servicio suspendido".
+    // Con el cliente suspendido, toda página web (http) lleva al portal https://portal.cactusnet.com.co
+    // ("Servicio Suspendido"). Se revisa con la misma dirección que usa Android para detectar portales cautivos:
+    // normalmente responde vacío (204); si llega el portal, el cliente está suspendido.
+    portalCheck: 'http://connectivitycheck.gstatic.com/generate_204',
+    portalHost: /portal\.cactusnet\.com\.co/i,
+    portalRe: /colombia\s*wisp|suspendid|servicio\s+(cortado|suspendido)|corte\s+de\s+servicio|portal\s+cautivo/i,
     relockAfterMin: 5,               // tras este tiempo en segundo plano, el contenido adulto se vuelve a bloquear
     pinMaxTries: 5,                  // intentos antes de bloquear el PIN temporalmente
     pinLockMin: 5,                   // primer bloqueo (minutos); se duplica con cada fallo adicional
-    // categorías / canales que se consideran para adultos
+    // categorías / canales que oculta el control parental
     adultRe: /(adult(?!\s*swim)|xxx|porn|er[oó]tic|playboy|hustler|\+\s?18|18\s?\+|para\s+adultos)/i
   };
 
@@ -61,8 +72,12 @@
     set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
     del: function (k) { try { localStorage.removeItem(k); } catch (e) {} }
   };
+  /* Versión privada (no se publica): window.CACTUS_PRIVATE = { user, local, public } lo define js/private.js.
+     Usuario fijo, contraseña en cada apertura (no se guarda), servidor local con respaldo por IP pública. */
+  var PRIV = window.CACTUS_PRIVATE || null;
+  if (PRIV) { CONFIG.server = PRIV.local; CONFIG.updateUrl = ''; }
   // Ajuste técnico (no visible para el usuario): cambiar el servidor sin recompilar.
-  (function () { var ov = store.get('iptv.serverOverride', null); if (ov) CONFIG.server = ov; })();
+  (function () { var ov = !PRIV && store.get('iptv.serverOverride', null); if (ov) CONFIG.server = ov; })();
 
   // Puente con la app nativa de Android (no existe en webOS ni en el navegador)
   function nat(fn, arg) {
@@ -90,7 +105,7 @@
 
   /* ============================ UI GENERAL ============================ */
   function show(id) {
-    ['chooser', 'login', 'browser', 'player'].forEach(function (s) {
+    ['chooser', 'login', 'browser', 'player', 'suspended'].forEach(function (s) {
       if (s === id) $(s).classList.remove('hidden'); else $(s).classList.add('hidden');
     });
     S.screen = id;
@@ -128,9 +143,25 @@
     htmlCls('mode-choose', !S.mode);
     htmlCls('mode-tv', S.mode === 'tv');
     htmlCls('mode-mobile', S.mode === 'mobile');
+    orient();
     fit();
     if (S.mode === 'tv') nat('setOrientation', 6);                     // horizontal
     else if (S.mode === 'mobile') nat('setOrientation', S.screen === 'player' ? 6 : -1); // libre
+  }
+
+  /* Celular / tablet: vertical u horizontal según el tamaño de la pantalla SIN teclado.
+     (Con CSS "orientation" el teclado, al achicar la ventana, cambiaba el diseño a horizontal.) */
+  var OR = { w: 0, h: 0 };
+  function orient() {
+    var w = window.innerWidth, h = window.innerHeight;
+    if (!w || !h) return;
+    var kb = document.documentElement.className.indexOf(' kb') >= 0 || /(^|\s)kb(\s|$)/.test(document.documentElement.className);
+    // con el teclado abierto y el mismo ancho, la ventana solo se achicó por el teclado: no cambiar
+    if (kb && OR.w && Math.abs(w - OR.w) < 40) return;
+    OR.w = w; OR.h = h;
+    var land = w > h;
+    htmlCls('o-land', land); htmlCls('o-port', !land);
+    htmlCls('o-low', land ? h <= 560 : h <= 700);
   }
 
   // En TV la interfaz está diseñada a 1920x1080 y se escala a la pantalla real.
@@ -158,7 +189,7 @@
   function paintChooser() { qsa('#chooser .opt').forEach(function (o, i) { o.classList.toggle('focused', i === C.idx); }); }
   function chooseMode(m) {
     S.mode = m; store.set('iptv.mode', m); applyMode();
-    proceed();
+    if (L.suspended) showSuspended(); else proceed();
   }
   function chooserKey(k, e) {
     switch (k) {
@@ -171,36 +202,267 @@
     e.preventDefault();
   }
 
-  /* ============================ LOGIN ============================ */
-  var L = { rows: [], r: 0 };
+  /* ============================ LOGIN ============================
+     Tres formas de entrar:
+       · Local  — el servidor de CONFIG.server. Solo aparece si responde (equipo en la red del proveedor).
+       · Xtream — dirección del servidor + usuario + contraseña.
+       · M3U    — enlace de una lista M3U. */
+  /* ---- Tema: con Local la app se ve como CactusNet TV (manual de CactusNet); con Xtream y M3U, como Cactus ----
+     El tema se pone con la clase html.theme-cn (css/cn.css) y los elementos .cn-only / .cac-only del HTML.
+     Samsung Orsay y la versión privada pueden forzarlo con window.CACTUS_FORCE_CN. */
+  var TH = { cn: null };
+  function setTheme(cn) {
+    cn = !!cn || !!window.CACTUS_FORCE_CN;
+    if (TH.cn === cn) return;
+    TH.cn = cn; htmlCls('theme-cn', cn);
+    document.title = cn ? 'CactusNet TV' : 'Cactus';
+  }
+  function supportMsg() { return TH.cn ? CONFIG.supportCn : CONFIG.support; }
+
+  /* ---- Local: solo para clientes CactusNet ----
+     Con la sesión Local abierta se revisa cada 30 s que el servidor de CactusNet responda. Si se cambia de red
+     (datos móviles, otro WiFi) se corta el canal y se muestra el aviso, con Reintentar y Cerrar sesión. */
+  var LW = { t: null, fails: 0, open: false, busy: false };
+  function lwOn() { return !!S.profile && isLocalProfile(S.profile) && !!S.src && S.screen !== 'login' && S.screen !== 'chooser'; }
+  function lwCheck(now) {
+    if (!lwOn() || LW.open || LW.busy) return;
+    LW.busy = true;
+    probeLocal(function (ok) {
+      if (L.suspended) { LW.busy = false; LW.fails = 0; showSuspended(); return; }
+      checkPortal(function (sus) {
+        LW.busy = false;
+        if (sus) { LW.fails = 0; showSuspended(); return; }
+        afterProbe(ok);
+      });
+    });
+    function afterProbe(ok) {
+      if (ok) { LW.fails = 0; return; }
+      if (++LW.fails >= 2) lwBlock();
+      else setTimeout(function () { lwCheck(true); }, now ? 3000 : 5000);   // una segunda prueba antes de avisar
+    }
+  }
+  function lwBlock() {
+    if (!lwOn() || LW.open) return;
+    LW.open = true; LW.fails = 0;
+    if (S.screen === 'player') exitPlayer();
+    closeList(); adsHide();
+    if (M.open) closeModal();
+    openModal({
+      kind: 'info', locked: true, title: 'Solo para clientes CactusNet',
+      text: 'CactusNet TV solo funciona conectado a la red de CactusNet.\n\n' +
+        (S.mode === 'mobile' ? 'Si estás usando datos móviles u otra red WiFi, conéctate al WiFi de tu casa.'
+          : 'Revisa que el equipo esté conectado al WiFi o al cable de red de CactusNet.') +
+        '\n\n¿Necesitas ayuda? Comunícate al 317 611 9013.',
+      buttons: [
+        { label: 'Reintentar', primary: true, fn: function () {
+          closeModal(); loading(true, 'Buscando el servidor de CactusNet…');
+          probeLocal(function (ok) {
+            loading(false); LW.open = false;
+            if (ok) { softRefresh(); toast('Conectado a CactusNet'); } else lwBlock();
+          });
+        } },
+        { label: 'Cerrar sesión', fn: function () { closeModal(); LW.open = false; logout(); } }
+      ]
+    });
+  }
+  // ¿El cliente de CactusNet está suspendido? (cb(true) solo si llega el portal de suspendidos)
+  function checkPortal(cb) {
+    var done = false, x = new XMLHttpRequest();
+    function fin(v) { if (done) return; done = true; cb(v); }
+    try {
+      x.open('GET', CONFIG.portalCheck + '?t=' + Date.now(), true);
+      x.timeout = 5000;
+      x.onload = function () {
+        var t = '', u = '';
+        try { t = x.responseText || ''; u = x.responseURL || ''; } catch (e) {}
+        fin(CONFIG.portalHost.test(u) || (x.status !== 204 && (CONFIG.portalHost.test(t) || /servicio\s+suspendido/i.test(t))));
+      };
+      x.onerror = function () { fin(false); };
+      x.ontimeout = function () { fin(false); };
+      x.send();
+    } catch (e) { fin(false); }
+  }
+  // ¿Es cliente de CactusNet? (el servidor local responde o usó Local en este equipo)
+  function cnClient() { return L.localOk || !!store.get('iptv.localCreds', null) || isLocalProfile(store.get('iptv.profile', null)) || (S.profile && isLocalProfile(S.profile)); }
+
+  /* ---- Servicio suspendido (solo Local) ----
+     Pantalla de CactusNet TV con las cuentas de pago, Reintentar y Cerrar sesión. */
+  var SUS = { i: 0 };
+  function showSuspended() {
+    if (S.screen === 'suspended') return;
+    if (S.screen === 'player') exitPlayer();
+    closeList(); adsHide();
+    if (M.open) closeModal();
+    LW.open = false;
+    setTheme(true);
+    show('suspended'); SUS.i = 0; paintSus();
+  }
+  function paintSus() { [$('susRetry'), $('susLogout')].forEach(function (b, i) { b.classList.toggle('focused', i === SUS.i && S.mode === 'tv'); }); }
+  function susRetry() {
+    loading(true, 'Revisando tu servicio…');
+    probeLocal(function (ok) { checkPortal(function (sus) {
+      loading(false);
+      if (sus) L.suspended = true;
+      if (ok && !sus) {
+        toast('¡Bienvenido de nuevo!');
+        if (S.src) { show('browser'); paint(); softRefresh(); } else proceed();
+        return;
+      }
+      if (L.suspended) { toast('Tu servicio sigue suspendido'); return; }
+      if (S.src && isLocalProfile(S.profile)) { show('browser'); lwBlock(); } else { L.probed = true; showLogin(); }
+    }); });
+  }
+  function susKey(k, e) {
+    switch (k) {
+      case KEY.LEFT: case KEY.UP: SUS.i = 0; paintSus(); break;
+      case KEY.RIGHT: case KEY.DOWN: SUS.i = 1; paintSus(); break;
+      case KEY.ENTER: if (SUS.i === 0) susRetry(); else logout(); break;
+      case KEY.BACK: case KEY.ESC: case KEY.BKSP: confirmExit(); break;
+      default: return;
+    }
+    e.preventDefault();
+  }
+
+  function logout() {
+    var keep = store.get('iptv.profile', null);
+    store.del('iptv.profile');
+    S.src = null; S.profile = null; S.unlocked = false;
+    if (!(keep && isLocalProfile(keep) && store.get('iptv.saveCreds', true))) $('xPass').value = '';
+    L.probed = false; L.mode = ''; L.touched = false; L.vals = {};
+    showLogin();
+  }
+
+  var L = { rows: [], r: 0, mode: '', localOk: false, probed: false, touched: false, vals: {} };
+  var LMODES = { local: 'Local', xtream: 'Xtream', m3u: 'Lista M3U' };
+  function isLocalProfile(p) { return !!p && (p.mode === 'local' || (p.mode === 'xtream' && !p.server)); }
+  function loginModes() { return (L.localOk ? ['local'] : []).concat(['xtream', 'm3u']); }
+  function probeLocal(cb) {
+    // ¿responde el servidor local? (cualquier respuesta HTTP sirve; sin conexión o sin respuesta = no)
+    var done = false, x = new XMLHttpRequest();
+    function fin(ok) { if (done) return; done = true; L.localOk = ok; L.probed = true; cb(ok); }
+    L.suspended = false;
+    try {
+      x.open('GET', CONFIG.server + '/player_api.php?t=' + Date.now(), true);
+      x.timeout = 3500;
+      x.onload = function () {
+        // El servidor XUI responde JSON. Si en su lugar llega una página del portal cautivo
+        // (ColombiaWisp: cliente suspendido en el MikroTik), es "servicio suspendido".
+        var t = '', u = '';
+        try { t = (x.responseText || '').replace(/^\s+/, ''); u = x.responseURL || ''; } catch (e) {}
+        var json = t.charAt(0) === '{' || t.charAt(0) === '[';
+        // cualquier respuesta del servidor sirve (como antes); solo una página del portal es "suspendido"
+        var moved = false;
+        try { moved = !!u && u.indexOf(CONFIG.server) !== 0; } catch (e) {}
+        if (x.status > 0 && !json && (CONFIG.portalRe.test(t.slice(0, 20000)) || (moved && CONFIG.portalRe.test(u)))) { L.suspended = true; fin(false); return; }
+        fin(x.status > 0);
+      };
+      x.onerror = function () { fin(false); };
+      x.ontimeout = function () { fin(false); };
+      x.send();
+    } catch (e) { fin(false); }
+  }
+  function setLoginMode(m) {
+    if (loginModes().indexOf(m) < 0) m = loginModes()[0];
+    // cada pestaña conserva su usuario y contraseña (Local no le pasa los suyos a Xtream ni al revés)
+    if (L.mode && L.mode !== m) {
+      if (L.mode !== 'm3u') L.vals[L.mode] = { user: $('xUser').value, pass: $('xPass').value };
+      if (m !== 'm3u') {
+        var v = L.vals[m] || (m === 'local' ? (store.get('iptv.localCreds', null) || {}) : {});
+        $('xUser').value = v.user || ''; $('xPass').value = v.pass || '';
+      }
+    } else if (!L.mode && m === 'local' && !$('xUser').value) {
+      var lc = store.get('iptv.localCreds', null) || {};   // Local: datos guardados ya escritos
+      $('xUser').value = lc.user || ''; $('xPass').value = lc.pass || '';
+    }
+    L.mode = m;
+    setTheme(m === 'local');
+    paintSave();
+    qsa('#ltabs .ltab').forEach(function (t) {
+      var tm = t.getAttribute('data-m');
+      t.classList.toggle('hidden', loginModes().indexOf(tm) < 0);
+      t.classList.toggle('on', tm === m);
+    });
+    $('fServer').classList.toggle('hidden', m !== 'xtream');
+    $('fUser').classList.toggle('hidden', m === 'm3u');
+    $('fPass').classList.toggle('hidden', m === 'm3u');
+    $('fM3u').classList.toggle('hidden', m !== 'm3u');
+    $('fSave').classList.toggle('hidden', m !== 'local');
+    $('loginSub').textContent = m === 'local' ? 'Usa el usuario y la contraseña de tu servicio CactusNet.'
+      : m === 'xtream' ? 'Escribe la dirección de tu servidor Xtream y tus datos de acceso.'
+      : 'Pega el enlace de tu lista de canales M3U.';
+    L.rows = [$('ltabs')].concat(m === 'xtream' ? [$('xServer')] : [])
+      .concat(m === 'm3u' ? [$('xM3u')] : [$('xUser'), $('xPass')]).concat(m === 'local' ? [$('fSave')] : []).concat([$('btnConnect')]);
+    paintLogin();
+  }
+  // "Guardar credenciales" (solo Local, marcada por defecto): deja escritos el usuario y la contraseña
+  function paintSave() { $('fSave').classList.toggle('on', store.get('iptv.saveCreds', true) !== false); }
+  function toggleSave() { store.set('iptv.saveCreds', store.get('iptv.saveCreds', true) === false); paintSave(); }
   function showLogin(msg) {
     show('login');
-    L.rows = [$('xUser'), $('xPass'), $('btnConnect')];
-    L.r = $('xUser').value ? ($('xPass').value ? 2 : 1) : 0;
+    $('xPass').type = 'password'; $('btnEye').classList.remove('on');
+    var saved = store.get('iptv.profile', null) || {};
+    if (!L.mode) {
+      if (saved.mode === 'm3u' && saved.url) $('xM3u').value = saved.url;
+      if (saved.server) $('xServer').value = saved.server;
+      if (saved.mode === 'xtream' && saved.server) L.vals.xtream = { user: saved.user || '', pass: saved.pass || '' };
+      if (!isLocalProfile(saved) && saved.user && !$('xUser').value) $('xUser').value = saved.user;
+    }
+    var want = L.mode || (isLocalProfile(saved) ? 'local' : (saved.mode || 'local'));
+    setLoginMode(want);
+    L.r = 1;
+    for (var i = 1; i < L.rows.length - 1; i++) if (!L.rows[i].value) { L.r = i; break; }
+    if (i === L.rows.length - 1 && L.rows[L.r].value) L.r = L.rows.length - 1;
+    if (L.mode === 'local' && $('xUser').value && $('xPass').value) L.r = L.rows.length - 1;
     $('loginMsg').textContent = msg || '';
     paintLogin();
+    if (!L.probed) probeLocal(function (ok) {
+      if (S.screen !== 'login') return;
+      // si aparece "Local" y la persona no ha cambiado nada, se elige sola
+      setLoginMode(ok && !L.touched && (!saved.mode || isLocalProfile(saved)) ? 'local' : L.mode);
+      if (L.mode === 'local' && $('xUser').value && $('xPass').value) { L.r = L.rows.length - 1; paintLogin(); }
+    });
   }
   function paintLogin() {
     L.rows.forEach(function (e, i) { e.classList.toggle('focused', i === L.r && S.mode === 'tv'); });
+  }
+  function nextLoginMode(d) {
+    var ms = loginModes(), i = ms.indexOf(L.mode);
+    L.touched = true;
+    setLoginMode(ms[(i + d + ms.length) % ms.length]);
+    $('loginMsg').textContent = '';
   }
   function loginKey(k, e) {
     var ae = document.activeElement;
     if (ae && ae.tagName === 'INPUT') {
       if (k === KEY.ENTER) {
         ae.blur(); e.preventDefault();
-        if (ae.id === 'xUser') { L.r = 1; paintLogin(); if (S.mode === 'mobile') $('xPass').focus(); }
-        else { L.r = 2; paintLogin(); connect(); }
+        var at = L.rows.indexOf(ae);
+        L.r = Math.min(at + 1, L.rows.length - 1); paintLogin();
+        if (L.rows[L.r].tagName === 'INPUT') { if (S.mode === 'mobile') L.rows[L.r].focus(); }
+        else connect();
         return;
       }
       if (k === KEY.BACK || k === KEY.ESC) { ae.blur(); e.preventDefault(); return; }
       if (k !== KEY.UP && k !== KEY.DOWN) return; // dejar escribir y mover el cursor
       ae.blur();
     }
+    var row = L.rows[L.r];
     switch (k) {
-      case KEY.UP: L.r = clamp(L.r - 1, 0, 2); paintLogin(); break;
-      case KEY.DOWN: L.r = clamp(L.r + 1, 0, 2); paintLogin(); break;
+      case KEY.LEFT: if (row && row.id === 'ltabs') nextLoginMode(-1); break;
+      case KEY.RIGHT:
+        if (row && row.id === 'ltabs') nextLoginMode(1);
+        else if (row && row.id === 'xPass') togglePass();      // en la contraseña: ▶ ver / ocultar
+        break;
+      case KEY.UP: L.r = clamp(L.r - 1, 0, L.rows.length - 1); paintLogin(); break;
+      case KEY.DOWN: L.r = clamp(L.r + 1, 0, L.rows.length - 1); paintLogin(); break;
       case KEY.ENTER:
-        if (L.r < 2) L.rows[L.r].focus(); else connect();
+        if (row.id === 'ltabs') { L.r = 1; paintLogin(); break; }
+        if (row.id === 'fSave') { toggleSave(); break; }
+        if (row.tagName === 'INPUT') {
+          var r0 = L.r;
+          var nxt = function () { L.r = Math.min(r0 + 1, L.rows.length - 1); paintLogin(); if (L.rows[L.r].id === 'btnConnect' && r0 === L.rows.length - 2) connect(); };
+          if (window.CACTUS_OSK) openOsk(row, nxt); else row.focus();
+        } else connect();
         break;
       case KEY.BACK: case KEY.ESC: case KEY.BKSP:
         if (S.src) { show('browser'); paint(); } else confirmExit();
@@ -209,17 +471,79 @@
     }
     e.preventDefault();
   }
+  function trim(v) { return (v || '').replace(/^\s+|\s+$/g, ''); }
   function connect() {
-    var p = { mode: 'xtream', user: $('xUser').value.replace(/^\s+|\s+$/g, ''), pass: $('xPass').value };
-    if (!p.user || !p.pass) { $('loginMsg').textContent = 'Escribe tu usuario y contraseña.'; return; }
-    startSession(p, false);
+    var m = L.mode, p;
+    if (m === 'm3u') {
+      p = { mode: 'm3u', url: trim($('xM3u').value) };
+      if (!/^https?:\/\/\S+/i.test(p.url)) { $('loginMsg').textContent = 'Escribe el enlace de la lista (empieza por http:// o https://).'; return; }
+    } else {
+      p = { mode: m, user: trim($('xUser').value), pass: $('xPass').value };
+      if (m === 'xtream') {
+        var srv = trim($('xServer').value);
+        // si pegan el enlace completo (get.php?username=…&password=…), se toman de ahí el usuario y la contraseña
+        var mu = /[?&]username=([^&]+)/i.exec(srv), mp = /[?&]password=([^&]+)/i.exec(srv);
+        if (mu && !p.user) { p.user = decodeURIComponent(mu[1]); $('xUser').value = p.user; }
+        if (mp && !p.pass) { p.pass = decodeURIComponent(mp[1]); $('xPass').value = p.pass; }
+        if (!srv) { $('loginMsg').textContent = 'Escribe la dirección del servidor.'; return; }
+        if (!/^https?:\/\//i.test(srv)) srv = 'http://' + srv;
+        p.server = srv.replace(/\/(player_api|get)\.php.*$/i, '').replace(/\/+$/, '');
+        $('xServer').value = p.server;
+      }
+      if (!p.user || !p.pass) { $('loginMsg').textContent = 'Escribe tu usuario y contraseña.'; return; }
+    }
+    startSession(p, m === 'local' && !S.src);   // Local al abrir la app: vuelve al último canal visto
   }
 
-  function profKey(p) { return p.mode === 'm3u' ? p.url : CONFIG.server + '|' + p.user; }
+  /* ---- Versión privada: servidor local o IP pública ---- */
+  var NET = { mode: 'local', fails: 0, t: null };
+  function privLogin(src) {
+    if (!PRIV || src.kind !== 'xtream') return src.login();
+    src.base = PRIV.local; src.loginTimeout = 5000;
+    return src.login().then(function (d) { setNet('local'); return d; }, function (err) {
+      if (!err || err.code !== 'network') throw err;
+      src.base = PRIV.public; src.loginTimeout = 12000;      // sin red local: probar por internet
+      return src.login().then(function (d) { setNet('public'); return d; });
+    });
+  }
+  function setNet(mode) {
+    NET.mode = mode; NET.fails = 0;
+    htmlCls('net-public', mode === 'public');
+  }
+  // Cada minuto: si se está en la IP pública y vuelve la red local, se cambia a la local (y al revés).
+  function privProbe() {
+    if (!S.src || S.src.kind !== 'xtream' || !S.profile) return;
+    var t = new Sources.Xtream({ server: PRIV.local, user: S.profile.user, pass: S.profile.pass });
+    t.loginTimeout = 4000;
+    t.login().then(function () {
+      if (NET.mode === 'public') privSwitch('local');
+      NET.fails = 0;
+    }, function (err) {
+      if (!err || err.code !== 'network' || NET.mode !== 'local') return;
+      if (++NET.fails < 2) return;                           // 2 fallos seguidos: pasar a la IP pública
+      var u = new Sources.Xtream({ server: PRIV.public, user: S.profile.user, pass: S.profile.pass });
+      u.loginTimeout = 8000;
+      u.login().then(function () { privSwitch('public'); }, function () {});
+    });
+  }
+  function privSwitch(mode) {
+    S.src.base = mode === 'public' ? PRIV.public : PRIV.local;
+    setNet(mode);
+    toast(mode === 'public' ? 'Sin red local: conectado por IP pública' : 'Red local disponible: conectado al servidor local');
+    if (S.screen === 'player' && P.active) startStream();   // seguir viendo el mismo canal por el otro servidor
+  }
+
+  function togglePass() {
+    var x = $('xPass'), show = x.type === 'password';
+    x.type = show ? 'text' : 'password';
+    $('btnEye').classList.toggle('on', show);
+    if (OSK.open && OSK.input === x) paintOsk();
+  }
+
+  function profKey(p) { return p.mode === 'm3u' ? p.url : (isLocalProfile(p) ? CONFIG.server : p.server) + '|' + p.user; }
   function makeSource(p) {
-    return p.mode === 'm3u'
-      ? new Sources.M3U({ url: p.url })
-      : new Sources.Xtream({ server: CONFIG.server, user: p.user, pass: p.pass, liveFmt: S.settings.liveFmt });
+    if (p.mode === 'm3u') return new Sources.M3U({ url: p.url });
+    return new Sources.Xtream({ server: isLocalProfile(p) ? CONFIG.server : p.server, user: p.user, pass: p.pass, liveFmt: S.settings.liveFmt });
   }
 
   // Cada vez que se abre la app se vuelve a iniciar sesión y se descargan las categorías
@@ -228,16 +552,28 @@
     $('loginMsg').textContent = '';
     loading(true, resume ? 'Actualizando canales…' : 'Conectando…');
     var src = makeSource(p);
-    src.login().then(function () {
+    privLogin(src).then(function () {
       loading(false);
-      store.set('iptv.profile', p);
-      S.profile = p; S.src = src;
+      // la versión privada no guarda la contraseña: se pide cada vez que se abre la app
+      var local = isLocalProfile(p);
+      // Local: con "Guardar credenciales" marcada, al abrir en la red de CactusNet entra sola; si no, quedan escritos
+      store.set('iptv.profile', PRIV ? { mode: p.mode, user: p.user } : (local ? { mode: 'local' } : p));
+      if (local && !PRIV) {
+        if (store.get('iptv.saveCreds', true) !== false) store.set('iptv.localCreds', { user: p.user, pass: p.pass });
+        else store.del('iptv.localCreds');
+      }
+      setTheme(local);
+      S.profile = p; S.src = src; LW.fails = 0; LW.open = false;
       S.favKey = 'iptv.favs.' + profKey(p);
       S.lastKey = 'iptv.last.' + profKey(p);
       S.favs = store.get(S.favKey, {});
       openBrowser(resume);
+      if (local) setTimeout(function () { lwCheck(true); }, 800);   // ¿suspendido?
     }, function (err) {
       loading(false);
+      L.mode = isLocalProfile(p) ? 'local' : p.mode;
+      if (p.server) $('xServer').value = p.server;
+      if (p.url) $('xM3u').value = p.url;
       if (p.user) $('xUser').value = p.user;
       if (p.pass) $('xPass').value = p.pass;
       if (err && err.code === 'network') {
@@ -245,11 +581,23 @@
         offlineModal(function () { startSession(p, resume); });
         return;
       }
-      showLogin('No se pudo conectar: ' + err.message + '.');
+      if (err && err.code === 'auth') {
+        // datos malos: se borra la contraseña y el cursor queda en ella para escribirla de nuevo
+        $('xPass').value = '';
+        showLogin('Usuario o contraseña incorrectos. Revísalos e inténtalo de nuevo.');
+        L.r = L.rows.indexOf($('xPass')); paintLogin();
+        if (S.mode === 'mobile') $('xPass').focus();
+        return;
+      }
+      if (err && err.code === 'account') {
+        showLogin(err.message.charAt(0).toUpperCase() + err.message.slice(1) + '. ' + supportMsg());
+        return;
+      }
+      showLogin('No se pudo iniciar sesión: ' + err.message + '.' + (isLocalProfile(p) ? ' ' + supportMsg() : ' Revisa los datos del servidor.'));
     });
   }
 
-  /* --- Sin conexión con el servidor (p. ej. fuera de la red de CactusNet) --- */
+  /* --- Sin conexión con el servidor --- */
   var OFF = { retry: null };
   // ¿Hay internet? Se intenta cargar una imagen pequeña de Google (funciona sin CORS en Android y webOS).
   function checkInternet(cb) {
@@ -267,13 +615,15 @@
   function offlineText(internet) {
     if (!internet) {
       return 'Este equipo no tiene conexión a internet.\n\n' +
-        (S.mode === 'mobile' ? 'Revisa que estés conectado al WiFi de tu casa' : 'Revisa que el equipo esté conectado al WiFi o al cable de red') +
-        ' y que el módem esté encendido. Si el problema sigue, comunícate al ' + CONFIG.supportPhone + '.';
+        (S.mode === 'mobile' ? 'Revisa que estés conectado al WiFi' : 'Revisa que el equipo esté conectado al WiFi o al cable de red') +
+        ' y que el módem esté encendido.';
     }
-    return 'Hay internet, pero no se pudo conectar con el servidor de CactusNet TV.\n\n' +
-      'Este servicio solo funciona conectado al internet de CactusNet. ' +
-      (S.mode === 'mobile' ? 'Si estás usando datos móviles u otra red WiFi, conéctate al WiFi de tu casa. ' : '') +
-      'Si ya estás en la red de CactusNet, comunícate al ' + CONFIG.supportPhone + '.';
+    if (S.profile && !isLocalProfile(S.profile)) {
+      return 'Hay internet, pero no se pudo conectar con el servidor.\n\nRevisa que la dirección esté bien escrita y que el servidor esté funcionando.';
+    }
+    return 'Hay internet, pero no se pudo conectar con el servidor local.\n\n' +
+      (TH.cn ? 'CactusNet TV solo funciona conectado a la red de CactusNet. ' : 'La opción Local solo funciona conectado a la red de tu proveedor. ') +
+      (S.mode === 'mobile' ? 'Si estás usando datos móviles u otra red WiFi, conéctate al WiFi de tu casa. ' : '') + supportMsg();
   }
   function offlineModal(retry) {
     loading(true, 'Comprobando conexión…');
@@ -283,7 +633,7 @@
     OFF.retry = retry;
     var go = function () { OFF.retry = null; closeModal(); retry(); };
     openModal({
-      kind: 'info', title: internet ? 'Sin conexión con CactusNet' : 'Sin internet', text: offlineText(internet),
+      kind: 'info', title: internet ? 'Sin conexión con el servidor' : 'Sin internet', text: offlineText(internet),
       buttons: [
         { label: 'Reintentar', fn: go, primary: true },
         { label: 'Usar otra cuenta', fn: function () { OFF.retry = null; closeModal(); showLogin(); } }
@@ -298,14 +648,14 @@
   });
   function loadErrorText(err, what) {
     return err && err.code === 'network'
-      ? 'Sin conexión con CactusNet. Verifica que estés conectado al internet de CactusNet y vuelve a intentarlo. Si sigue, comunícate al ' + CONFIG.supportPhone + '.'
+      ? 'Sin conexión con el servidor. Revisa tu conexión y vuelve a intentarlo. ' + supportMsg()
       : 'No se pudieron cargar ' + what + ': ' + err.message + '.';
   }
 
   /* ============================ NAVEGADOR ============================ */
   function openBrowser(resume) {
     S.sections = S.src.sections()
-      .filter(function (s) { return CONFIG.sections.indexOf(s.id) >= 0; })
+      .filter(function (s) { return !isLocalProfile(S.profile) || CONFIG.sections.indexOf(s.id) >= 0; })
       .concat([{ id: 'settings', label: 'Ajustes' }]);
     S.col = 1;
     renderSections();
@@ -364,14 +714,31 @@
       if (id !== S.reqId) return;
       var ac = S.adultCats[sec] = {};
       cats.forEach(function (c) { if (c.id !== '*' && CONFIG.adultRe.test(c.name)) { c.adult = true; ac[c.id] = true; } });
+      // orden alfabético; "Todos" va primero. Si el servidor ya tiene una categoría llamada "Todos",
+      // se usa esa y no se repite la de la app.
+      var star = null, own = null, rest = [];
+      cats.forEach(function (c) {
+        if (c.id === '*') star = c;
+        else if (!own && norm(c.name) === 'todos') own = c;
+        else rest.push(c);
+      });
+      rest.sort(function (a, b) {
+        var x = norm(a.name), y = norm(b.name);
+        try { return x.localeCompare(y); } catch (e) { return x < y ? -1 : x > y ? 1 : 0; }
+      });
+      var todos = own || star;
+      cats = todos ? [todos].concat(rest) : rest;
       cats.unshift({ id: 'fav', name: '★ Favoritos', count: (S.favs[sec] || []).length });
+      // (los TV Samsung viejos no tienen el emoji de la lupa en su letra)
+      if (sec === 'live') cats.unshift({ id: 'search', name: window.CACTUS_OSK ? 'Buscar canal' : '🔍 Buscar canal' });
       S.allCats = cats;
       // categorías de adultos: no aparecen mientras el interruptor de Ajustes esté apagado
       cats = S.cats = shownCats(cats);
       var pick = -1, j;
       if (opt && opt.catId != null) for (j = 0; j < cats.length; j++) if (cats[j].id === opt.catId) { pick = j; break; }
       if (pick < 0) {
-        for (j = 0; j < cats.length; j++) if (cats[j].id !== 'fav' && cats[j].id !== '*' && !cats[j].adult) { pick = j; break; }
+        if (todos) for (j = 0; j < cats.length; j++) if (cats[j] === todos) { pick = j; break; }   // abrir en "Todos"
+        if (pick < 0) for (j = 0; j < cats.length; j++) if (cats[j].id !== 'fav' && cats[j].id !== 'search' && !cats[j].adult) { pick = j; break; }
         if (pick < 0) pick = cats.length > 1 ? 1 : 0;
       }
       S.catIdx = pick;
@@ -406,6 +773,51 @@
     list.appendChild(frag);
   }
 
+  /* ---- Buscar canal (lupa) ----
+     Busca por nombre (sin importar tildes ni mayúsculas) o por número entre todos los canales en vivo. */
+  var SR = { q: '', t: null };
+  function norm(t) {
+    return String(t || '').toLowerCase()
+      .replace(/[áàäâ]/g, 'a').replace(/[éèëê]/g, 'e').replace(/[íìïî]/g, 'i')
+      .replace(/[óòöô]/g, 'o').replace(/[úùüû]/g, 'u').replace(/ñ/g, 'n').replace(/\s+/g, ' ').replace(/^ | $/g, '');
+  }
+  function showSearch() {
+    var box = $('searchBox');
+    box.classList.remove('hidden');
+    box.value = SR.q;
+    $('itemsTitle').textContent = 'Buscar canal';
+    if (SR.q) runSearch(SR.q);
+    else setEmpty(S.mode === 'mobile' ? 'Toca la barra de arriba y escribe el nombre o número del canal.'
+                                      : 'Pulsa OK para escribir el nombre o el número del canal.');
+    if (S.mode === 'mobile') setTimeout(function () { try { box.focus(); } catch (e) {} }, 50);
+  }
+  function hideSearch() { $('searchBox').classList.add('hidden'); try { $('searchBox').blur(); } catch (e) {} }
+  function openSearchInput() {
+    var box = $('searchBox');
+    if (window.CACTUS_OSK) openOsk(box, function () { runSearch(box.value, true); });
+    else { try { box.focus(); } catch (e) {} }
+  }
+  function runSearch(q, goToResults) {
+    SR.q = q = String(q || '').replace(/^\s+|\s+$/g, '');
+    var cat = S.cats[S.catIdx];
+    if (!cat || cat.id !== 'search') return;
+    if (!q) { clearItems(''); showSearch(); return; }
+    setEmpty('Buscando…');
+    numAllLive().then(function (all) {
+      var nq = norm(q), num = /^\d+$/.test(q) ? parseInt(q, 10) : -1;
+      var res = all.filter(function (it) {
+        if (lockedNow() && (it.adult || isAdultItem(it, 'live'))) return false;
+        return norm(it.name).indexOf(nq) >= 0 || (num >= 0 && parseInt(it.num, 10) === num);
+      });
+      if (num >= 0) res.sort(function (a, b) { return (parseInt(a.num, 10) === num ? 0 : 1) - (parseInt(b.num, 10) === num ? 0 : 1); });
+      var c2 = S.cats[S.catIdx];
+      if (!c2 || c2.id !== 'search') return;
+      S.loadedKey = 'live|search|' + q;
+      setItems(res, 'Resultados para "' + q + '"', 'No se encontró ningún canal con "' + q + '".');
+      if (goToResults && res.length && S.mode !== 'mobile') { S.col = 2; paint(); }
+    }, function (err) { setEmpty(loadErrorText(err, 'los canales')); });
+  }
+
   function clearItems(msg) {
     S.items = []; S.itemEls = []; S.itemIdx = 0; S.shown = 0; S.loadedKey = null;
     $('listItems').innerHTML = '';
@@ -423,8 +835,10 @@
 
   function loadItems() {
     var sec = curSec(), cat = S.cats[S.catIdx];
-    if (!cat || sec === 'settings') return;
+    if (!cat || sec === 'settings') { hideSearch(); return; }
+    if (cat.id !== 'search') hideSearch();
     var key = sec + '|' + cat.id + (lockedNow() ? '|L' : '');
+    if (cat.id === 'search' && S.loadedKey && S.loadedKey.indexOf('live|search') === 0) return;
     if (S.loadedKey === key) return;
     S.stack = null;
     clearItems('');
@@ -433,10 +847,11 @@
     if (cat.adult && lockedNow()) {
       S.after = null;
       setEmpty(S.mode === 'mobile'
-        ? 'Contenido para adultos bloqueado. Toca aquí para ingresar el PIN.'
-        : 'Contenido para adultos bloqueado. Pulsa OK para ingresar el PIN.', true);
+        ? 'Bloqueado por el control parental. Toca aquí para ingresar el PIN.'
+        : 'Bloqueado por el control parental. Pulsa OK para ingresar el PIN.', true);
       return;
     }
+    if (cat.id === 'search') { showSearch(); runAfter(); return; }
     if (cat.id === 'fav') {
       setItems(filterAdult((S.favs[sec] || []).slice(), sec), cat.name,
         S.mode === 'mobile' ? 'Aún no tienes favoritos. Toca la estrella ☆ de un canal para agregarlo.'
@@ -559,6 +974,14 @@
   }
 
   function browserKey(k, e) {
+    // escribiendo en la barra de búsqueda (teclado del TV o del celular)
+    var sb = $('searchBox');
+    if (document.activeElement === sb) {
+      if (k === KEY.ENTER) { e.preventDefault(); sb.blur(); runSearch(sb.value, true); return; }
+      if (k === KEY.BACK || k === KEY.ESC) { e.preventDefault(); sb.blur(); return; }
+      if (k !== KEY.UP && k !== KEY.DOWN) return;     // dejar escribir
+      sb.blur();
+    }
     var col = S.col, step = (k === KEY.CHUP || k === KEY.CHDN) ? 10 : 1;
     switch (k) {
       case KEY.UP: case KEY.DOWN: case KEY.CHUP: case KEY.CHDN:
@@ -597,6 +1020,7 @@
     if (curSec() === 'settings') { runSetting(S.cats[S.catIdx]); return; }
     clearTimeout(S.catTimer);
     var cat = S.cats[S.catIdx];
+    if (cat.id === 'search') { if (S.loadedKey === null || S.loadedKey.indexOf('live|search') !== 0) loadItems(); openSearchInput(); return; }
     if (cat.adult && lockedNow()) { unlockAdult(function () { if (S.items.length) { S.col = 2; paint(); } }); return; }
     if (S.loadedKey !== curSec() + '|' + cat.id + (lockedNow() ? '|L' : '')) loadItems();
     if (S.items.length) { S.col = 2; paint(); }
@@ -758,13 +1182,13 @@
   function unlockAdult(then) {
     // Sin PIN: para desbloquear por primera vez hay que crear uno.
     if (!pinSet()) {
-      createPin(function () { S.unlocked = true; toast('Canales para adultos visibles'); afterLockChange(); if (then) then(); },
-        'Crea un PIN para los canales de adultos');
+      createPin(function () { S.unlocked = true; toast('Control parental desactivado'); afterLockChange(); if (then) then(); },
+        'Crea un PIN para el control parental');
       return;
     }
-    requirePin('Contenido para adultos', function () {
+    requirePin('Control parental', function () {
       S.unlocked = true;
-      toast('Canales para adultos visibles');
+      toast('Control parental desactivado');
       afterLockChange();
       if (then) then();
     });
@@ -792,7 +1216,7 @@
   function createPin(done, title) {
     pinModal({
       title: title || 'Crea un PIN de 4 dígitos',
-      text: 'Se pedirá para ver los canales de adultos.',
+      text: 'Se pedirá para desactivar el control parental.',
       buttons: [{ label: 'Cancelar', fn: closeModal }],
       onPin: function (p1) {
         pinModal({
@@ -805,9 +1229,9 @@
             savePin(p1, code);
             S.unlocked = false;
             msgModal('Guarda tu código de recuperación',
-              'Si olvidas el PIN podrás recuperarlo con este código o con la contraseña de tu cuenta CactusNet. Anótalo y guárdalo lejos del alcance de los niños: no se volverá a mostrar.',
+              'Si olvidas el PIN podrás recuperarlo con este código o con la contraseña de tu cuenta. Anótalo y guárdalo lejos del alcance de los niños: no se volverá a mostrar.',
               code,
-              [{ label: 'Ya lo anoté', fn: function () { closeModal(); toast('PIN creado. Contenido adulto bloqueado.'); afterLockChange(); if (done) done(); } }]);
+              [{ label: 'Ya lo anoté', fn: function () { closeModal(); toast('PIN creado. Control parental activado.'); afterLockChange(); if (done) done(); } }]);
             return null;
           }
         });
@@ -818,7 +1242,7 @@
 
   // Recuperar el PIN. Dos formas, ambas con el mismo límite de intentos:
   //  1) el código de recuperación que se mostró al crear el PIN;
-  //  2) la contraseña de la cuenta CactusNet, verificada contra el servidor (no contra lo guardado
+  //  2) la contraseña de la cuenta, verificada contra el servidor (no contra lo guardado
   //     en el equipo), para quien perdió el código.
   // En ambos casos se crea un PIN nuevo y se genera un código nuevo.
   function recovered(ok) {
@@ -846,7 +1270,7 @@
     var busy = false;
     codeModal({
       title: 'Recuperar con tu cuenta',
-      text: 'Escribe la contraseña de tu cuenta CactusNet (usuario ' + S.profile.user + '). La verificaremos con el servidor.',
+      text: 'Escribe la contraseña de tu cuenta (usuario ' + S.profile.user + '). La verificaremos con el servidor.',
       inputType: 'password', placeholder: 'Contraseña', maxLength: 64,
       onCode: function (pass) {
         if (busy) return null;
@@ -854,7 +1278,7 @@
         busy = true;
         var opt = M.opt;
         $('mErr').textContent = 'Verificando…';
-        new Sources.Xtream({ server: CONFIG.server, user: S.profile.user, pass: pass }).login().then(function () {
+        new Sources.Xtream({ server: (S.src && S.src.base) || CONFIG.server, user: S.profile.user, pass: pass }).login().then(function () {
           busy = false;
           var p = par(); if (p) { p.fails = 0; p.lockUntil = 0; store.set(PKEY, p); }
           if (M.opt === opt) recovered(ok);
@@ -863,7 +1287,7 @@
           if (M.opt !== opt) return;
           if (!/incorrect/.test(err.message)) {
             $('mErr').textContent = err.code === 'network'
-              ? 'Para verificar la contraseña necesitas estar conectado al internet de CactusNet. También puedes usar el código de recuperación.'
+              ? 'Para verificar la contraseña necesitas conexión con el servidor. También puedes usar el código de recuperación.'
               : 'No se pudo verificar: ' + err.message + '.';
             return;
           }
@@ -896,6 +1320,7 @@
   }
   function openModal(opt) {
     M.open = true; M.opt = opt; M.kind = opt.kind; M.pin = '';
+    if ($('ad').classList.contains('show')) adsHide();
     $('mTitle').textContent = opt.title || '';
     $('mText').textContent = opt.text || '';
     $('mCode').textContent = opt.code || '';
@@ -925,6 +1350,7 @@
     }
     if (opt.kind === 'code') M.rows.push([inp]);
     bx.classList.toggle('vertical', !!opt.vertical);
+    M.vertical = !!opt.vertical;
     if (btnEls.length) { if (opt.vertical) btnEls.forEach(function (b) { M.rows.push([b]); }); else M.rows.push(btnEls); }
     M.r = opt.focus || 0; M.c = 0;
     $('modal').classList.remove('hidden');
@@ -989,13 +1415,18 @@
     switch (k) {
       case KEY.UP: if (M.r > 0) { M.r--; M.c = Math.min(M.c, M.rows[M.r].length - 1); } break;
       case KEY.DOWN: if (M.r < M.rows.length - 1) { M.r++; M.c = Math.min(M.c, M.rows[M.r].length - 1); } break;
-      case KEY.LEFT: M.c--; break;
-      case KEY.RIGHT: M.c++; break;
+      // en los menús de una sola columna (idioma, opciones) también se mueve con ◀ ▶
+      case KEY.LEFT:
+        if (M.vertical) { if (M.r > 0) M.r--; } else M.c--;
+        break;
+      case KEY.RIGHT:
+        if (M.vertical) { if (M.r < M.rows.length - 1) M.r++; } else M.c++;
+        break;
       case KEY.ENTER:
         var x = row && row[clamp(M.c, 0, row.length - 1)];
         if (!x) break;
         if (x.getAttribute('data-k')) padPress(x.getAttribute('data-k'));
-        else if (x.id === 'mInput') x.focus();
+        else if (x.id === 'mInput') { if (window.CACTUS_OSK) openOsk(x, submitCode); else x.focus(); }
         else if (x._fn) x._fn();
         break;
       case KEY.BACK: case KEY.ESC: if (!(M.opt && M.opt.locked)) closeModal(); break;
@@ -1011,12 +1442,18 @@
     if (!IS_WEBOS) out.push({ id: 'mode', name: 'Modo: ' + (S.mode === 'mobile' ? 'Celular / tablet' : 'Televisor') });
     if (S.mode === 'mobile' && canPip()) out.push({ id: 'pip', name: 'Ventana flotante al salir: ' + (S.settings.pip ? 'Sí' : 'No') });
     // Interruptor: los canales para adultos solo se ven si está activado (pide el PIN; si no hay, se crea).
-    out.push({ id: 'adult', name: 'Canales para adultos: ' + (S.unlocked ? 'Visibles' : 'Ocultos') });
+    out.push({ id: 'adult', name: 'Control parental: ' + (S.unlocked ? 'Desactivado' : 'Activado') });
     if (pinSet()) {
       out.push({ id: 'pinchange', name: 'Cambiar PIN' });
       out.push({ id: 'pinoff', name: 'Quitar PIN' });
     }
     if (hasAndroidPlayer()) out.push({ id: 'andplayer', name: 'Reproductor: ' + PLAYER_NAMES[playerMode()] });
+    var nb = 0, vb = vlcBad(); for (var kb in vb) if (vb.hasOwnProperty(kb)) nb++;
+    if (hasVlc() && nb) out.push({ id: 'vlcbad', name: 'Volver a probar VLC en ' + nb + (nb === 1 ? ' canal' : ' canales') });
+    // Samsung Orsay: elegir el motor de video del TV (Clásico o SEF; SEF permite cambiar el idioma)
+    if (window.CactusNative && window.CactusNative.engines) {
+      out.push({ id: 'natengine', name: 'Motor de video Samsung: ' + window.CactusNative.engineName() });
+    }
     if (!androidPlayerOn()) {
       if (S.src.kind === 'xtream') out.push({ id: 'fmt', name: 'Formato en vivo: ' + (S.settings.liveFmt === 'ts' ? 'MPEG-TS (.ts)' : 'HLS (.m3u8)') });
       out.push({ id: 'engine', name: 'Reproductor web: ' + (S.settings.engine === 'native' ? 'Nativo del equipo' : 'hls.js') });
@@ -1029,7 +1466,8 @@
   function showInfo() {
     var rows = S.src.infoRows().filter(function (kv) { return kv[0] !== 'Servidor'; })
       .map(function (kv) { return { type: 'info', k: kv[0], v: kv[1] }; });
-    rows.push({ type: 'info', k: 'Canales para adultos', v: S.unlocked ? 'Visibles' : 'Ocultos (se activan en Ajustes con el PIN)' });
+    rows.push({ type: 'info', k: 'Control parental', v: S.unlocked ? 'Desactivado' : 'Activado (se desactiva en Ajustes con el PIN)' });
+    rows.push({ type: 'info', k: 'Conexión', v: isLocalProfile(S.profile) ? 'Local' : (S.profile.mode === 'm3u' ? 'Lista M3U' : 'Xtream') });
     rows.push({ type: 'info', k: 'Versión', v: CONFIG.version });
     setItems(rows, 'Cuenta', '');
     $('itemsTitle').textContent = 'Cuenta';
@@ -1056,10 +1494,10 @@
         requirePin('PIN actual', function () { createPin(refreshSettings, 'Escribe tu PIN nuevo'); }, { always: true });
         return;
       case 'pinoff':
-        requirePin('Quitar PIN', function () { store.del(PKEY); relock(); S.unlocked = false; toast('PIN eliminado. El contenido para adultos sigue bloqueado.'); refreshSettings(); }, { always: true });
+        requirePin('Quitar PIN', function () { store.del(PKEY); relock(); S.unlocked = false; toast('PIN eliminado. El control parental sigue activado.'); refreshSettings(); }, { always: true });
         return;
       case 'adult':
-        if (S.unlocked) { relock(); toast('Canales para adultos ocultos'); refreshSettings(); }
+        if (S.unlocked) { relock(); toast('Control parental activado'); refreshSettings(); }
         else unlockAdult(refreshSettings);
         return;
       case 'fmt':
@@ -1067,6 +1505,10 @@
         S.src.liveFmt = S.settings.liveFmt;
         break;
       case 'engine': S.settings.engine = S.settings.engine === 'native' ? 'hlsjs' : 'native'; break;
+      case 'natengine':
+        window.CactusNative.nextEngine();
+        toast('Motor de video: ' + window.CactusNative.engineName() + '. Abre un canal para probarlo.');
+        break;
       case 'andplayer':
         var modes = hasVlc() ? ['vlc', 'android', 'web'] : ['android', 'web'];
         S.settings.player = modes[(modes.indexOf(playerMode()) + 1) % modes.length];
@@ -1074,12 +1516,8 @@
         break;
       case 'reload': startSession(S.profile, false); return;
       case 'update': checkUpdate(true); return;
-      case 'logout':
-        store.del('iptv.profile');
-        S.src = null; S.unlocked = false;
-        $('xPass').value = '';
-        showLogin();
-        return;
+      case 'logout': logout(); return;
+      case 'vlcbad': store.del('iptv.vlcBad'); toast('Esos canales vuelven a abrir con VLC'); break;
     }
     store.set('iptv.settings', S.settings);
     refreshSettings();
@@ -1131,10 +1569,13 @@
     var plan = [], xtLive = P.item.type === 'live' && S.src.kind === 'xtream';
     var mode = playerMode();
     function add(vlc) {
-      if (xtLive) plan.push({ engine: 'android', vlc: vlc, url: asTs(url) }, { engine: 'android', vlc: vlc, url: asHls(asTs(url)) });
+      if (xtLive && window.CACTUS_HLS_FIRST) plan.push({ engine: 'android', vlc: vlc, url: asHls(asTs(url)) }, { engine: 'android', vlc: vlc, url: asTs(url) });
+      else if (xtLive) plan.push({ engine: 'android', vlc: vlc, url: asTs(url) }, { engine: 'android', vlc: vlc, url: asHls(asTs(url)) });
       else plan.push({ engine: 'android', vlc: vlc, url: url });
     }
-    if (mode === 'vlc') { add(true); add(false); }
+    // canales que con VLC se quedaron negros, congelados o sin sonido: se abren con el reproductor de Android
+    if (mode === 'vlc' && vlcBad()[String(P.item.id)]) { add(false); add(true); }
+    else if (mode === 'vlc') { add(true); add(false); }
     else if (mode === 'android') { add(false); if (hasVlc()) add(true); }
     if (xtLive) {
       var first = S.settings.liveFmt === 'ts' ? asTs(url) : asHls(asTs(url));
@@ -1145,8 +1586,12 @@
 
   function startStream() {
     stopStream();
+    hidePlayerErr();
     P.item = P.list[P.idx];
     P.active = true;
+    // cambio de canal: el reloj del primer anuncio empieza de nuevo
+    if (String(P.item.id) !== ADS.chanId) { ADS.chanId = String(P.item.id); ADS.chanAt = Date.now(); }
+    P.retries = 0; P.stallRetries = 0; P.stall = 0; P.lastT = -1; P.okSecs = 0;
     P.npaused = false;
     if (P.item.type === 'live' && S.lastKey) store.set(S.lastKey, { cat: P.catId, item: P.item });
     P.plan = buildPlan(S.src.url(P.item));
@@ -1179,6 +1624,24 @@
     P.dog = setTimeout(function () { if (P.active && P.step === step && !P.started) fail('tiempo agotado'); }, 20000);
   }
 
+  /* ---- VLC: canal negro, congelado o sin sonido (2.0) ----
+     El vigilante de VLC (en su propio hilo, sin revisar los primeros 10 s) avisa con -1002 congelado,
+     -1004 sin sonido o -1005 negro. El canal pasa enseguida al reproductor de Android y se recuerda. */
+  var VLC_BAD = { '-1002': 'imagen congelada', '-1004': 'sin sonido', '-1005': 'pantalla negra' };
+  function vlcBad() { return store.get('iptv.vlcBad', {}); }
+  function vlcToAndroid(n) {
+    var s = P.plan[P.step], to = -1;
+    for (var i = P.step + 1; i < P.plan.length; i++) if (P.plan[i].engine === 'android' && !P.plan[i].vlc) { to = i; break; }
+    // se recuerda si fue negro, congelado o sin sonido; si solo se quedó cargando (puede ser la red), no
+    if (P.item && P.item.type === 'live' && VLC_BAD[n]) { var b = vlcBad(); b[String(P.item.id)] = Date.now(); store.set('iptv.vlcBad', b); }
+    if (to < 0) { fail(VLC_BAD[n] || 'cargando sin fin'); return; }
+    clearTimeout(P.dog);
+    P.trail.push(stepName(s) + ' ✗ ' + (VLC_BAD[n] || 'cargando sin fin'));
+    stopEngines();
+    P.step = to; P.retries = 0;
+    loadStep();
+  }
+
   function loadAndroid(url, vlc) {
     P.url = url; P.started = false;
     $('playerMsg').textContent = '';
@@ -1193,7 +1656,7 @@
   window.__cactusNative = function (ev, n) {
     if (!P.active || P.engine !== 'android') return;
     if (ev === 'playing') {
-      P.started = true; clearTimeout(P.dog);
+      P.started = true; clearTimeout(P.dog); P.buffering = false; clearTimeout(P.bufT);
       showEngine();
       spinner(false); $('playerMsg').textContent = '';
       $('mPlayIc').setAttribute('d', P.npaused ? ICONS.play : ICONS.pause);
@@ -1202,8 +1665,13 @@
       spinner(false); $('playerMsg').textContent = '';
       showEngine();
     } else if (ev === 'buffering') {
-      spinner(true);
+      // pausas cortas de carga ya con el canal andando: no mostrar "cargando" (solo si pasa de 1,5 s)
+      if (!P.started) spinner(true);
+      else { clearTimeout(P.bufT); P.bufT = setTimeout(function () { if (P.active && P.engine === 'android' && P.buffering) spinner(true); }, 1500); }
+      P.buffering = true;
     } else if (ev === 'error') {
+      var st = P.plan && P.plan[P.step];
+      if (st && st.vlc && (VLC_BAD[String(n)] || String(n) === '-1003')) { vlcToAndroid(String(n)); return; }
       fail('código ' + n);
     } else if (ev === 'ended') {
       // En vivo: el servidor cortó la conexión; volver a conectar el mismo canal.
@@ -1261,9 +1729,12 @@
     stopEngines();
     spinner(false);
     P.engineInfo = P.trail.join(' · ');
-    $('playerMsg').textContent = 'Este canal no está disponible en este momento.\nPrueba de nuevo en unos minutos o elige otro canal. Si el problema sigue, comunícate al ' + CONFIG.supportPhone + '.';
+    showPlayerErr('Estamos trabajando para restablecer la señal.\nPrueba con otro canal o vuelve en unos minutos.');
+    lwCheck(true);   // Local: ¿se cambió de red?
   }
 
+  function showPlayerErr(t) { $('playerErrText').textContent = t; $('playerErrDiag').textContent = P.engineInfo || ''; $('playerErr').classList.remove('hidden'); hideOsd(); }
+  function hidePlayerErr() { $('playerErr').classList.add('hidden'); }
   function destroyHls() { if (P.hls) { try { P.hls.destroy(); } catch (e) {} P.hls = null; } }
 
   function stopEngines() {
@@ -1287,6 +1758,26 @@
   }
 
   // Estado del video sin importar el motor (nativo de Android o web)
+  /* Vigilante de canales congelados (en vivo): si el video deja de avanzar ~9 s sin estar en pausa,
+     se reconecta el mismo canal (hasta 5 veces seguidas). Si lleva 60 s viendo bien, se reinicia el conteo. */
+  function stallTick() {
+    if (!P.active || !P.started || !P.item || P.item.type !== 'live' || vPaused()) { P.stall = 0; return; }
+    var t = vTime();
+    if (!t || t !== P.lastT) {
+      if (t && t !== P.lastT) { P.okSecs = (P.okSecs || 0) + 3; if (P.okSecs >= 60) { P.retries = 0; P.stallRetries = 0; } }
+      P.lastT = t; P.stall = 0;
+      if (t) return;
+    }
+    if (!t) return;                       // el reproductor no informa la posición: no se puede vigilar
+    P.stall++;
+    if (P.stall < 3) return;
+    P.stall = 0; P.okSecs = 0;
+    P.stallRetries = (P.stallRetries || 0) + 1;
+    if (P.stallRetries > 5) { fail('el video se detuvo'); return; }
+    spinner(true);
+    loadStep();                           // volver a conectar el mismo canal
+  }
+
   function vPaused() { return P.engine === 'android' ? !!P.npaused : video.paused; }
   function vTime() { if (P.engine === 'android') { var t = nat('nativePosition'); return (t || 0) / 1000; } return video.currentTime; }
   function vDur() {
@@ -1313,7 +1804,7 @@
     closeList();
     stopStream();
     hideOsd();
-    $('playerMsg').textContent = '';
+    $('playerMsg').textContent = ''; hidePlayerErr();
     nat('setPipAllowed', false);
     show('browser');
     if (S.mode === 'mobile') nat('setOrientation', -1);
@@ -1352,6 +1843,7 @@
     if (!P.item || P.item.type !== 'live' || S.inPip) return;
     CL.open = true; CL.catId = P.catId; CL.items = P.list.slice();
     hideOsd();
+    if ($('ad').classList.contains('show')) adsHide();
     $('chList').classList.remove('hidden');
     $('chlPrev').style.visibility = $('chlNext').style.visibility = clCats().length > 1 ? '' : 'hidden';
     clRender(findById(CL.items, P.item.id), true);
@@ -1495,6 +1987,7 @@
     P.idx = (P.idx + d + P.list.length) % P.list.length;
     P.item = P.list[P.idx];
     stopStream();
+    hidePlayerErr();
     showOsd();
     spinner(true);
     clearTimeout(P.zapT);
@@ -1515,6 +2008,7 @@
     var it = P.item;
     if (!it || S.inPip || CL.open) return;
     var live = it.type === 'live';
+    $('osd').classList.toggle('is-live', live);
     $('mList').classList.toggle('hidden', !live);
     $('osdNum').textContent = live ? String(it.num || P.idx + 1) : '';
     $('osdName').textContent = it.name;
@@ -1528,16 +2022,18 @@
     $('osdEngine').textContent = P.engineInfo || '';
     $('osdSub').textContent = it.series ? it.series : (it.group ? it.group : (cat ? cat.name : ''));
     $('osdProgress').classList.toggle('hidden', live);
-    $('osdHint').textContent = live
-      ? '▲▼ / CH  Cambiar canal    ·    OK  Lista de canales    ·    ◀ ▶  Opciones (idioma, subtítulos, favorito)    ·    ATRÁS  Salir'
+    $('osdHint').innerHTML = live
+      ? '<i class="k">▲▼</i> Cambiar canal<i class="k">OK</i> Lista de canales<i class="k">◀ ▶</i> Opciones<i class="k red"></i> Favorito<i class="k">ATRÁS</i> Salir'
       : 'OK  Pausa    ·    ◀ ▶  10 s    ·    ⏪ ⏩  1 min    ·    ATRÁS  Salir';
     $('mPlayIc').setAttribute('d', vPaused() ? ICONS.play : ICONS.pause);
     updateProgress();
     $('osd').classList.remove('hidden');
+    htmlCls('osd-on', true);
+    if ($('ad').classList.contains('show')) adsHide();
     clearTimeout(P.osdT);
     if (!sticky) P.osdT = setTimeout(function () { if (!vPaused() || live) hideOsd(); }, S.mode === 'mobile' ? 4000 : 4500);
   }
-  function hideOsd() { $('osd').classList.add('hidden'); }
+  function hideOsd() { $('osd').classList.add('hidden'); htmlCls('osd-on', false); }
   function osdVisible() { return !$('osd').classList.contains('hidden'); }
   function updateProgress() {
     var d = vDur(), c = vTime();
@@ -1575,7 +2071,10 @@
       apply = function (id) { P.hls.audioTrack = id; };
     }
     var real = opts.filter(function (o) { return o.id >= 0; }).length;
-    if (type === 0 && real < 2) { toast(P.started ? 'Este canal tiene un solo idioma' : 'Espera a que cargue el canal'); return; }
+    if (type === 0 && real < 2) {
+      toast(P.started ? 'Este canal tiene un solo idioma' + (window.CACTUS_TRACK_INFO ? ' (' + window.CACTUS_TRACK_INFO + ')' : '') : 'Espera a que cargue el canal');
+      return;
+    }
     if (type === 1 && real < 1) { toast(P.started ? 'Este canal no tiene subtítulos' : 'Espera a que cargue el canal'); return; }
     var focus = 0;
     var buttons = opts.map(function (o, j) {
@@ -1666,6 +2165,7 @@
   function onHidden() { if (!S.hiddenAt) S.hiddenAt = Date.now(); }
   function onVisible() {
     if (!S.hiddenAt) return;
+    lwCheck(true);   // Local: si al volver está en otra red, aviso de "Solo para clientes CactusNet"
     var away = (Date.now() - S.hiddenAt) / 60000;
     S.hiddenAt = 0;
     if (away >= CONFIG.relockAfterMin) relock();
@@ -1683,14 +2183,126 @@
   }
 
   /* ============================ ENTRADA ============================ */
+  /* ---- Marcar el número del canal con los botones numéricos del control ----
+     Funciona en la lista y viendo un canal. Se escriben hasta 4 cifras; a los 2 s (o con OK) se abre
+     ese canal. Se busca en todos los canales en vivo (sin los de adultos si están ocultos). */
+  var NUM = { txt: '', t: null, all: null, allAt: 0 };
+  function digitOf(k) { return k >= 48 && k <= 57 ? k - 48 : (k >= 96 && k <= 105 ? k - 96 : -1); }
+  function numAllLive() {
+    if (NUM.all && Date.now() - NUM.allAt < 30 * 60000) return Promise.resolve(NUM.all);
+    return S.src.items('live', '*').then(function (l) {
+      l.sort(function (a, b) { return (parseInt(a.num, 10) || 99999) - (parseInt(b.num, 10) || 99999); });
+      NUM.all = l; NUM.allAt = Date.now();
+      return l;
+    });
+  }
+  function numKey(d) {
+    if (NUM.txt.length >= 4) NUM.txt = '';
+    NUM.txt += String(d);
+    $('numBox').textContent = NUM.txt;
+    $('numBox').classList.remove('hidden');
+    clearTimeout(NUM.t);
+    NUM.t = setTimeout(numGo, 2000);
+  }
+  function numGo() {
+    clearTimeout(NUM.t);
+    var want = parseInt(NUM.txt, 10);
+    NUM.txt = '';
+    setTimeout(function () { if (!NUM.txt) $('numBox').classList.add('hidden'); }, 600);
+    if (!want || !S.src) return;
+    numAllLive().then(function (all) {
+      var list = all.filter(function (it) { return !(lockedNow() && (it.adult || isAdultItem(it, 'live'))); });
+      for (var i = 0; i < list.length; i++) {
+        if (parseInt(list[i].num, 10) === want) { play(list, i); return; }
+      }
+      toast('No hay ningún canal con el número ' + want);
+    }, function () { toast('No se pudo buscar el canal ' + want); });
+  }
+
+  /* ---- Teclado en pantalla (televisores sin teclado del sistema, p. ej. Samsung Orsay) ----
+     Se activa con window.CACTUS_OSK. Flechas para moverse, OK para escribir, ATRÁS para cerrar. */
+  function escapeHtml(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  var OSK = { open: false, el: null, input: null, done: null, r: 0, c: 0, shift: false, rows: [] };
+  var OSK_ROWS = [
+    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+    ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+    ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'ñ'],
+    ['z', 'x', 'c', 'v', 'b', 'n', 'm', '.', '-', '_'],
+    ['MAYÚS', '@', 'ESPACIO', 'BORRAR', 'LISTO']
+  ];
+  function openOsk(input, done) {
+    OSK.input = input; OSK.done = done; OSK.r = 1; OSK.c = 0; OSK.shift = false; OSK.open = true;
+    if (!OSK.el) {
+      OSK.el = document.createElement('div');
+      OSK.el.id = 'osk'; OSK.el.className = 'osk';
+      document.body.appendChild(OSK.el);
+    }
+    paintOsk();
+    OSK.el.classList.remove('hidden');
+  }
+  function closeOsk(ok) {
+    OSK.open = false; OSK.el.classList.add('hidden');
+    if (ok && OSK.done) OSK.done();
+  }
+  function paintOsk() {
+    var inp = OSK.input, val = inp.value || '';
+    var shown = inp.type === 'password' ? val.replace(/./g, '•') : val;
+    var h = '<div class="osk-val">' + escapeHtml(shown) + '<span class="osk-cur">|</span></div>';
+    OSK.rows = OSK_ROWS;
+    for (var r = 0; r < OSK_ROWS.length; r++) {
+      h += '<div class="osk-row">';
+      for (var c = 0; c < OSK_ROWS[r].length; c++) {
+        var k = OSK_ROWS[r][c], lbl = k.length === 1 && OSK.shift ? k.toUpperCase() : k;
+        h += '<span class="osk-k' + (k.length > 1 ? ' wide' : '') + (r === OSK.r && c === OSK.c ? ' on' : '') + '">' + escapeHtml(lbl) + '</span>';
+      }
+      h += '</div>';
+    }
+    h += '<div class="osk-hint">OK escribir · ATRÁS cerrar · los números del control también escriben</div>';
+    OSK.el.innerHTML = h;
+  }
+  function oskKey(k, e) {
+    e.preventDefault();
+    var inp = OSK.input, row = OSK_ROWS[OSK.r];
+    var d = k >= 48 && k <= 57 ? k - 48 : -1;
+    if (d >= 0) { inp.value += String(d); paintOsk(); return; }
+    switch (k) {
+      case KEY.UP: OSK.r = Math.max(0, OSK.r - 1); break;
+      case KEY.DOWN: OSK.r = Math.min(OSK_ROWS.length - 1, OSK.r + 1); break;
+      case KEY.LEFT: OSK.c--; break;
+      case KEY.RIGHT: OSK.c++; break;
+      case KEY.ENTER:
+        var key = row[clamp(OSK.c, 0, row.length - 1)];
+        if (key === 'MAYÚS') OSK.shift = !OSK.shift;
+        else if (key === 'ESPACIO') inp.value += ' ';
+        else if (key === 'BORRAR') inp.value = inp.value.slice(0, -1);
+        else if (key === 'LISTO') { closeOsk(true); return; }
+        else inp.value += OSK.shift ? key.toUpperCase() : key;
+        break;
+      case KEY.BACK: case KEY.ESC: closeOsk(false); return;
+      case KEY.RED: inp.value = inp.value.slice(0, -1); break;
+      default: return;
+    }
+    OSK.c = clamp(OSK.c, 0, OSK_ROWS[OSK.r].length - 1);
+    paintOsk();
+  }
+
   function handleKey(k, e) {
+    if (OSK.open) { oskKey(k, e); return; }
     if (!$('loading').classList.contains('hidden')) { e.preventDefault(); return; }
     if (M.open) { modalKey(k, e); return; }
+    var ae0 = document.activeElement;
+    var typing = ae0 && ae0.tagName === 'INPUT';
+    if (!typing && (S.screen === 'player' || (S.screen === 'browser' && curSec() === 'live')) && S.src && !CL.open) {
+      var d = digitOf(k);
+      if (d >= 0) { e.preventDefault(); numKey(d); return; }
+      if (NUM.txt && k === KEY.ENTER) { e.preventDefault(); numGo(); return; }
+    }
     if (k === KEY.BKSP && document.activeElement && document.activeElement.tagName === 'INPUT') return;
     if (S.screen === 'chooser') chooserKey(k, e);
     else if (S.screen === 'login') loginKey(k, e);
     else if (S.screen === 'browser') browserKey(k, e);
     else if (S.screen === 'player') playerKey(k, e);
+    else if (S.screen === 'suspended') susKey(k, e);
   }
   document.addEventListener('keydown', function (e) { handleKey(e.keyCode, e); }, false);
 
@@ -1718,6 +2330,7 @@
     if (S.inPip) { closeList(); hideOsd(); } else showOsd();
   };
   window.addEventListener('resize', fit);
+  window.addEventListener('resize', orient);
 
   // Puntero (Magic Remote / ratón) y toques
   function bindList(id) {
@@ -1765,11 +2378,192 @@
 
   function proceed() {
     var p = store.get('iptv.profile', null);
-    if (p && (p.user || p.url)) startSession(p, true);
-    else showLogin();
+    if (p && !p.mode && !p.url && !p.server) p.mode = 'local';          // perfiles de la 1.x (sin modo)
+    if (p && p.mode === 'xtream' && !p.server) p.mode = 'local';
+    // quien viene de la 1.x tiene usuario y contraseña en el perfil: pasan a "Guardar credenciales"
+    // para que, en la red de CactusNet, la 2.0 entre sola igual que antes (sin volver a escribirlos)
+    if (p && p.mode === 'local' && p.user && p.pass && !PRIV) {
+      if (!store.get('iptv.localCreds', null)) store.set('iptv.localCreds', { user: p.user, pass: p.pass });
+      p = { mode: 'local' };
+    }
+    if (p) store.set('iptv.profile', p);
+    if (p && isLocalProfile(p) && !PRIV) {
+      // Local: entra solo si está en la red de CactusNet y tiene los datos guardados; si no, inicio de sesión
+      var lc = store.get('iptv.localCreds', null);
+      if (L.localOk && lc && lc.user && lc.pass && store.get('iptv.saveCreds', true) !== false) startSession({ mode: 'local', user: lc.user, pass: lc.pass }, true);
+      else showLogin('');
+      return;
+    }
+    if (p && (p.user || p.url) && !PRIV) startSession(p, true);
+    else showLogin(PRIV ? 'Escribe tu contraseña para entrar.' : '');
+  }
+
+  /* ============================ ANUNCIOS (2.0) ============================
+     Imágenes (y videos .mp4 en Android) de la carpeta "anuncios" del repositorio cactustv en GitHub.
+     Al subir o borrar archivos, una acción de GitHub actualiza anuncios/lista.json; la app lo revisa cada 10 min.
+     Subcarpetas "DD-DD" = días del mes en que se muestran (27-02: del 27 al 2; 03-06: del 3 al 6).
+     Archivos sueltos en "anuncios" = todos los días.
+     Reglas 2.0:
+       · el primero, cuando lleva 5 min seguidos en el MISMO canal (al cambiar de canal se reinicia);
+       · luego uno cada 20 min viendo sin parar, máximo 3 por hora;
+       · imágenes 8 s, videos lo que duren (máx. 15 s);
+       · nunca con el menú, la lista de canales, una ventana o un error abiertos, ni mientras carga;
+       · en fechas de pago, el primero de la sesión es el recordatorio de pago (archivos con fecha). */
+  var ADS = { list: [], next: 0, loadedAt: 0, hideT: null, chanId: '', chanAt: 0, shown: [], billingDone: false,
+    FIRST: 5 * 60000, EVERY: 20 * 60000, PER_HOUR: 3, SHOW: 8000, VID_MAX: 15000 };
+  function adsBase() { return CONFIG.adsUrl.replace(/[^\/]*$/, ''); }
+  function adsLoad() {
+    ADS.loadedAt = Date.now();
+    var x = new XMLHttpRequest();
+    try {
+      x.open('GET', CONFIG.adsUrl + '?t=' + Date.now(), true);
+      x.timeout = 15000;
+      x.onload = function () {
+        if (x.status === 404) { ADS.list = []; return; }   // sin carpeta / sin lista: no hay anuncios
+        if (x.status !== 200) return;
+        try {
+          var v = JSON.parse(x.responseText), l = (v && v.imagenes) || [];
+          ADS.list = l.map(function (e) { return typeof e === 'string' ? { archivo: e } : e; })
+            .filter(function (e) { return e && (/\.(jpe?g|png|gif)$/i.test(e.archivo || '') || (adsVideoOk() && /\.(mp4|webm)$/i.test(e.archivo || ''))); });
+          // si un anuncio viene en imagen y en video con el mismo nombre: Android muestra el video, los TV la imagen
+          var vids = {};
+          ADS.list.forEach(function (e) { if (/\.(mp4|webm)$/i.test(e.archivo)) vids[e.archivo.replace(/\.[^.]+$/, '')] = 1; });
+          ADS.list = ADS.list.filter(function (e) { return /\.(mp4|webm)$/i.test(e.archivo) || !vids[e.archivo.replace(/\.[^.]+$/, '')]; });
+        } catch (e) {}
+      };
+      x.send();
+    } catch (e) {}
+  }
+  function adsBusy() {   // algo en pantalla que el anuncio no debe tapar
+    return osdVisible() || CL.open || M.open || !P.started || NUM.txt ||
+      !$('spinner').classList.contains('hidden') || !$('playerErr').classList.contains('hidden') || !!$('playerMsg').textContent;
+  }
+  function adsTick() {
+    var now = Date.now();
+    // revisar la carpeta cada 10 min; si aún no hay lista (o falló), cada 2 min
+    if (now - ADS.loadedAt > (ADS.list.length ? 10 : 2) * 60000) adsLoad();
+    if (!isLocalProfile(S.profile)) return;                    // los anuncios solo salen con la opción Local
+    var watching = S.screen === 'player' && P.active && !S.inPip && !document.hidden;
+    if (!watching) { if (!S.inPip && S.screen !== 'player') ADS.next = 0; return; }
+    if (!ADS.next) {
+      // primer anuncio: 5 min en el mismo canal
+      if (now - ADS.chanAt < ADS.FIRST) return;
+    } else if (now < ADS.next) return;
+    if (adsBusy()) return;                                        // se reintenta en el siguiente tick (5 s)
+    ADS.shown = ADS.shown.filter(function (t) { return now - t < 3600000; });
+    if (ADS.shown.length >= ADS.PER_HOUR) { ADS.next = ADS.shown[0] + 3600000; return; }
+    var day = new Date().getDate();
+    var list = ADS.list.filter(function (e) { return adsDayOk(e, day); });
+    if (!list.length) { ADS.next = now + ADS.EVERY; return; }
+    ADS.next = now + ADS.EVERY;
+    ADS.shown.push(now);
+    // en fechas de pago, el primero es el recordatorio (los anuncios con rango de días)
+    var pick = null;
+    if (!ADS.billingDone) {
+      var dated = list.filter(function (e) { return +e.desde && +e.hasta; });
+      if (dated.length) pick = dated[Math.floor(Math.random() * dated.length)];
+      ADS.billingDone = true;
+    }
+    if (!pick) {
+      // uno al azar, sin repetir el último que se mostró (si hay más de uno)
+      var pool = list.length > 1 ? list.filter(function (x) { return x.archivo !== ADS.last; }) : list;
+      pick = pool[Math.floor(Math.random() * pool.length)];
+    }
+    ADS.last = pick.archivo;
+    var src = adsBase() + String(pick.archivo).split('/').map(encodeURIComponent).join('/');
+    if (/\.(mp4|webm)$/i.test(pick.archivo)) { adsVideo(src); return; }
+    var img = new Image();
+    img.onload = function () { adsShow(img.src); };   // si no carga, no se muestra nada
+    img.src = src;
+  }
+  /* Videos solo en la app Android con VLC o el reproductor de Android (el video del canal va por otra vía).
+     En los TV (Samsung, Orsay, Roku) un segundo video podría cortar el canal: allí solo imágenes. */
+  function adsVideoOk() { return hasVlc(); }
+  function adsVideo(src) {
+    if (!adsVideoOk() || P.engine === 'web') return;
+    var v = $('adVid'), done = false;
+    v.muted = true; v.loop = false;
+    var to = setTimeout(function () { if (!done) { done = true; v.removeAttribute('src'); try { v.load(); } catch (x) {} } }, 15000);
+    v.oncanplay = function () {
+      if (done) return; done = true; clearTimeout(to);
+      var d = v.duration;
+      var ms = isFinite(d) && d > 0 ? Math.min(d * 1000 + 300, ADS.VID_MAX) : ADS.SHOW;
+      adsShow(null, ms);
+      try { var pr = v.play(); if (pr && pr['catch']) pr['catch'](function () {}); } catch (x) {}
+    };
+    v.onended = function () { adsHide(); };
+    v.onerror = function () { done = true; clearTimeout(to); };
+    v.src = src;
+    try { v.load(); } catch (x) {}
+  }
+  // ¿Toca mostrar esta imagen hoy? (rango de días del mes; si el rango cruza el fin de mes, p. ej. 27 → 2)
+  function adsDayOk(e, d) {
+    var a = +e.desde, b = +e.hasta;
+    if (!a || !b) return true;
+    return a <= b ? (d >= a && d <= b) : (d >= a || d <= b);
+  }
+  function adsShow(src, ms) {
+    if (!(S.screen === 'player' && P.active && !S.inPip) || adsBusy()) { adsStopVid(); return; }
+    var ad = $('ad');
+    ad.classList.toggle('vid', !src);
+    if (src) $('adImg').src = src;
+    ad.classList.remove('hidden');
+    setTimeout(function () { ad.classList.add('show'); }, 30);
+    clearTimeout(ADS.hideT);
+    ADS.hideT = setTimeout(adsHide, ms || ADS.SHOW);
+  }
+  function adsStopVid() { var v = $('adVid'); try { v.pause(); } catch (x) {} v.removeAttribute('src'); try { v.load(); } catch (x) {} }
+  function adsHide() {
+    clearTimeout(ADS.hideT);
+    if ($('ad').classList.contains('vid')) setTimeout(adsStopVid, 600);
+    $('ad').classList.remove('show');
+    setTimeout(function () { if (!$('ad').classList.contains('show')) $('ad').classList.add('hidden'); }, 600);
+  }
+
+  /* Samsung Tizen: el cargador (boot.js) de las apps ya instaladas solo descarga HTML, CSS y JS de la versión nueva.
+     Si la app corre desde esa copia y le faltan sus imágenes/fuentes, se toman del repositorio en GitHub (PNG). */
+  function fixAssets() {
+    if (!window.CACTUS_BOOT || !window.CACTUS_BOOT.repo) return;
+    var base = 'https://raw.githubusercontent.com/' + window.CACTUS_BOOT.repo + '/v' + CONFIG.version + '/app/';
+    var probe = new Image();
+    probe.onload = function () {};
+    probe.onerror = function () {
+      qsa('img[src^="img/"]').forEach(function (im) { im.src = base + im.getAttribute('src').replace(/\.svg$/, '.png'); });
+      var css = '', fw = { Regular: 400, SemiBold: 600, Bold: 700, ExtraBold: 800, Black: 900 };
+      for (var w in fw) css += '@font-face{font-family:"Nunito";font-weight:' + fw[w] + ';src:url("' + base + 'fonts/Nunito-' + w + '.ttf")}';
+      css += '#login{background-image:url("' + base + 'img/bg-login-tv.jpg")}#browser{background-image:url("' + base + 'img/bg-menu-tv.jpg")}';
+      css += 'html.theme-cn #login{background-image:url("' + base + 'img/cn/bg-login-tv.jpg")}html.theme-cn #browser{background-image:url("' + base + 'img/cn/bg-menu-tv.jpg")}';
+      var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+    };
+    probe.src = 'img/cactus-logo.png';
+  }
+
+  /* Logo animado (abajo a la derecha): cada 5 min el rombo gira y "Cactus" sale por 4 s; luego vuelve a ser solo el rombo */
+  var WM = { EVERY: 300000, SHOW: 4000, deg: 0, last: 0, busy: false };
+  function wmSpin(el) { WM.deg += 360; var t = 'rotate(' + WM.deg + 'deg)'; el.style.webkitTransform = t; el.style.transform = t; }
+  function wmTick() {
+    var now = Date.now();
+    var watching = S.screen === 'player' && P.active && !S.inPip && !document.hidden && !TH.cn;  // CactusNet TV: logo fijo
+    if (!watching) { WM.last = now; return; }                    // cuenta 5 min viendo TV
+    if (WM.busy || now - WM.last < WM.EVERY || adsBusy() || !$('ad').classList.contains('hidden')) return; // no se cruza con un anuncio
+    var wm = $('wm'), ico = wm && wm.querySelector('.wm-ico');
+    if (!ico) return;
+    WM.busy = true; WM.last = now;
+    wmSpin(ico); wm.className = 'watermark open';
+    setTimeout(function () {
+      wmSpin(ico); wm.className = 'watermark';
+      setTimeout(function () { WM.busy = false; }, 900);
+    }, 800 + WM.SHOW);
   }
 
   function init() {
+    fixAssets();
+    store.del('iptv.vlcFroze');          // 2.0: ya no se recuerdan canales "congelados" con VLC
+    setInterval(stallTick, 3000);
+    if (PRIV) setInterval(privProbe, 60000);
+    adsLoad();
+    setInterval(adsTick, 5000);
+    WM.last = Date.now(); setInterval(wmTick, 2000);
     video = $('video');
     // Estos eventos son del reproductor web; se ignoran cuando reproduce el nativo de Android.
     function web() { return P.active && P.engine === 'web'; }
@@ -1785,6 +2579,38 @@
 
     qsa('#chooser .opt').forEach(function (o) { o.addEventListener('click', function () { chooseMode(o.getAttribute('data-mode')); }); });
     $('btnConnect').addEventListener('click', connect);
+    // búsqueda mientras se escribe (celular y TV con teclado del sistema)
+    $('searchBox').addEventListener('input', function () {
+      var v = this.value; clearTimeout(SR.t);
+      SR.t = setTimeout(function () { runSearch(v, false); }, 350);
+    });
+    // ver / ocultar contraseña (sin quitar el foco del campo)
+    $('btnEye').addEventListener('mousedown', function (e) { e.preventDefault(); });
+    $('btnEye').addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); togglePass(); });
+    // celular: con el teclado abierto, subir el formulario para que se vea el campo
+    qsa('#ltabs .ltab').forEach(function (t) {
+      t.addEventListener('click', function () { L.touched = true; setLoginMode(t.getAttribute('data-m')); $('loginMsg').textContent = ''; });
+    });
+    ['xServer', 'xUser', 'xPass', 'xM3u'].forEach(function (id) {
+      $(id).addEventListener('focus', function () {
+        // celular y TV Android: el teclado del sistema aparece abajo; subir el formulario
+        htmlCls('kb', true);
+        var el = this;
+        setTimeout(function () {
+          try {
+            // TV: el formulario ya sube con CSS; no desplazar (se escondía el usuario arriba)
+            if (S.mode === 'tv') { $('login').scrollTop = 0; window.scrollTo(0, 0); document.body.scrollTop = 0; return; }
+            el.scrollIntoView(true); $('login').scrollTop = Math.max(0, $('login').scrollTop - 12);
+          } catch (x) {}
+        }, 300);
+      });
+      $(id).addEventListener('blur', function () {
+        setTimeout(function () {
+          var a = document.activeElement;
+          if (!a || a.tagName !== 'INPUT' || !/^x(Server|User|Pass|M3u)$/.test(a.id)) htmlCls('kb', false);
+        }, 200);
+      });
+    });
     ['listSec', 'listCats', 'listItems'].forEach(bindList);
     $('itemsEmpty').addEventListener('click', function () {
       var cat = S.cats[S.catIdx];
@@ -1804,7 +2630,13 @@
       vis();
     });
 
-    var tick = function () { $('clock').textContent = $('mclock').textContent = clock(); };
+    var DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    var MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    var tick = function () {
+      var d = new Date();
+      $('clock').textContent = $('mclock').textContent = clock();
+      $('cdate').textContent = DIAS[d.getDay()] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()];
+    };
     setInterval(tick, 10000); tick();
 
     // buscar una versión nueva unos segundos después de abrir (solo Android)
@@ -1815,15 +2647,35 @@
       var bn = window.__cactusBootNotes; window.__cactusBootNotes = null;
       setTimeout(function () {
         if (M.open) return;
-        openModal({ kind: 'info', title: 'CactusNet TV se actualizó a la versión ' + CONFIG.version, text: bn,
+        openModal({ kind: 'info', title: 'Cactus se actualizó a la versión ' + CONFIG.version, text: bn,
           buttons: [{ label: 'Entendido', fn: closeModal, primary: true }] });
       }, 2500);
     }
 
+    $('fSave').addEventListener('click', toggleSave);
+    $('susRetry').addEventListener('click', susRetry);
+    $('susLogout').addEventListener('click', function () { logout(); });
+    setInterval(function () { lwCheck(false); }, 30000);
+    window.addEventListener('offline', function () { lwCheck(true); });
+    window.addEventListener('online', function () { if (LW.open) return; lwCheck(true); });
+
     S.mode = IS_WEBOS ? 'tv' : store.get('iptv.mode', null);
-    if (!S.mode) { showChooser(); return; }
-    applyMode();
-    proceed();
+    // primero se busca el servidor de CactusNet (máx. 3,5 s): si responde, todo se ve como CactusNet TV
+    setTheme(false);
+    loading(true, 'Cargando…');
+    probeLocal(function (ok) {
+      var go = function () {
+        loading(false);
+        setTheme(ok || L.suspended);
+        if (!S.mode) { showChooser(); return; }
+        applyMode();
+        if (L.suspended) { showSuspended(); return; }
+        proceed();
+      };
+      // clientes de CactusNet: ¿está suspendido? (el portal de suspendidos responde en lugar de internet)
+      if (L.suspended || !cnClient()) { go(); return; }
+      checkPortal(function (sus) { if (sus) L.suspended = true; go(); });
+    });
   }
 
   /* ============================ ACTUALIZACIONES (Android) ============================
@@ -1835,6 +2687,7 @@
      (CactusNative.installUpdate). Android solo la instala si está firmada con la misma llave. */
   var U = { busy: false, xhr: null };
   function canUpdate() {
+    if (window.CACTUS_FLAVOR === 'play') return false;      // Play Store: las actualizaciones llegan por la tienda
     return !!(window.CactusNative && window.CactusNative.writeUpdate) && !/USUARIO/.test(CONFIG.updateUrl);
   }
   function localBuild() { var v = nat('versionCode'); return typeof v === 'number' ? v : 0; }
@@ -1888,7 +2741,7 @@
       kind: 'info', locked: !!info.force,
       title: 'Nueva versión ' + (info.versionName || ''),
       text: updateNotes(info) +
-        (info.force ? 'Esta actualización es necesaria para seguir usando CactusNet TV.' : 'Tienes la versión ' + CONFIG.version + '. ¿Quieres actualizar ahora?'),
+        (info.force ? 'Esta actualización es necesaria para seguir usando Cactus.' : 'Tienes la versión ' + CONFIG.version + '. ¿Quieres actualizar ahora?'),
       buttons: btns
     });
   }
@@ -1903,7 +2756,7 @@
   function downloadUpdate(info) {
     U.busy = true;
     var btns = info.force ? [] : [{ label: 'Cancelar', fn: function () { if (U.xhr) U.xhr.abort(); U.busy = false; U.xhr = null; closeModal(); } }];
-    openModal({ kind: 'info', locked: true, title: 'Descargando CactusNet TV ' + (info.versionName || ''), text: 'Preparando…', buttons: btns });
+    openModal({ kind: 'info', locked: true, title: 'Descargando Cactus ' + (info.versionName || ''), text: 'Preparando…', buttons: btns });
     var opt = M.opt;
     var x = U.xhr = new XMLHttpRequest();
     x.open('GET', bust(info.apk), true);
@@ -1950,7 +2803,7 @@
                           : [{ label: 'Abrir instalador otra vez', fn: function () { nat('installUpdate'); } }, { label: 'Cerrar', fn: closeModal }];
     openModal({
       kind: 'info', locked: !!info.force, title: 'Instala la actualización',
-      text: 'Se abrió el instalador de Android: elige Instalar / Actualizar. Si te pide permitir instalar apps de CactusNet TV, actívalo y vuelve atrás.',
+      text: 'Se abrió el instalador de Android: elige Instalar / Actualizar. Si te pide permitir instalar apps de Cactus, actívalo y vuelve atrás.',
       buttons: btns
     });
   }

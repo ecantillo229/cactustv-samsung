@@ -1,3 +1,5 @@
+/* 2.0: nombres con la tilde aparte (n + ◌̃) se unen en una sola letra (ñ) para que se vean bien con cualquier fuente */
+function nfc(t) { t = t == null ? '' : String(t); try { if (t.normalize) return t.normalize('NFC'); } catch (e) {} return t; }
 /* Fuentes de contenido: Xtream Codes y listas M3U.
    ES5 puro para compatibilidad con webOS 3.x+.
    Interfaz común:
@@ -17,11 +19,11 @@ var Sources = (function () {
       var x = new XMLHttpRequest();
       x.open('GET', url, true);
       x.timeout = timeout || 30000;
-      // err.code = 'network' cuando no se llega al servidor (p. ej. fuera de la red de CactusNet)
+      // err.code = 'network' cuando no se llega al servidor (p. ej. fuera de la red del proveedor)
       function fail(msg, code) { var e = new Error(msg); e.code = code; reject(e); }
       x.onload = function () {
         if (x.status >= 200 && x.status < 300) resolve(x.responseText);
-        else fail('el servidor respondió HTTP ' + x.status, x.status >= 500 ? 'network' : 'http');
+        else fail('el servidor respondió HTTP ' + x.status, x.status >= 500 ? 'network' : (x.status === 401 || x.status === 403 ? 'auth' : 'http'));
       };
       x.onerror = function () { fail('no hay conexión con el servidor', 'network'); };
       x.ontimeout = function () { fail('el servidor tardó demasiado', 'network'); };
@@ -75,17 +77,26 @@ var Sources = (function () {
       '&password=' + encodeURIComponent(this.pass);
     if (action) u += '&action=' + action;
     if (extra) for (var k in extra) if (extra.hasOwnProperty(k)) u += '&' + k + '=' + encodeURIComponent(extra[k]);
-    // el inicio de sesión espera menos: fuera de la red de CactusNet la conexión suele quedarse colgada
-    return getJson(u, !action ? 12000 : (action === 'get_live_streams' || action === 'get_vod_streams' || action === 'get_series' ? 90000 : 30000));
+    // el inicio de sesión espera menos: fuera de la red del proveedor la conexión suele quedarse colgada
+    return getJson(u, !action ? (this.loginTimeout || 12000) : (action === 'get_live_streams' || action === 'get_vod_streams' || action === 'get_series' ? 90000 : 30000));
   };
 
   Xtream.prototype.login = function () {
     var self = this;
+    function err(msg, code) { var e = new Error(msg); e.code = code; return e; }
+    var ESTADO = { Expired: 'vencida', Banned: 'bloqueada', Disabled: 'desactivada' };
     return this.api().then(function (d) {
-      if (!d || !d.user_info || String(d.user_info.auth) !== '1') throw new Error('usuario o contraseña incorrectos');
-      if (d.user_info.status && d.user_info.status !== 'Active') throw new Error('la cuenta está ' + d.user_info.status);
+      // XUI responde auth = 0 (o HTTP 401/403) cuando el usuario o la contraseña no coinciden
+      if (!d || !d.user_info || String(d.user_info.auth) !== '1') throw err('usuario o contraseña incorrectos', 'auth');
+      var st = d.user_info.status;
+      if (st && st !== 'Active') throw err('tu cuenta está ' + (ESTADO[st] || st.toLowerCase()), 'account');
+      var exp = +d.user_info.exp_date;
+      if (exp && exp * 1000 < Date.now()) throw err('tu cuenta está vencida', 'account');
       self.info = d.user_info;
       return d;
+    }, function (e) {
+      if (e && e.code === 'auth') throw err('usuario o contraseña incorrectos', 'auth');
+      throw e;
     });
   };
 
@@ -103,7 +114,7 @@ var Sources = (function () {
   Xtream.prototype.categories = function (sec) {
     return this.api(CAT_ACTION[sec]).then(function (list) {
       var out = [{ id: '*', name: 'Todos' }];
-      asArray(list).forEach(function (c) { out.push({ id: String(c.category_id), name: c.category_name || 'Sin nombre' }); });
+      asArray(list).forEach(function (c) { out.push({ id: String(c.category_id), name: nfc(c.category_name) || 'Sin nombre' }); });
       return out;
     });
   };
@@ -114,7 +125,7 @@ var Sources = (function () {
       return asArray(list).map(function (s) {
         var cat = s.category_id != null ? String(s.category_id) : '';
         var adult = String(s.is_adult) === '1';
-        if (sec === 'live') return { id: String(s.stream_id), name: s.name || '', logo: s.stream_icon || '', type: 'live', num: s.num || '', cat: cat, adult: adult };
+        if (sec === 'live') return { id: String(s.stream_id), name: nfc(s.name), logo: s.stream_icon || '', type: 'live', num: s.num || '', cat: cat, adult: adult };
         if (sec === 'vod') return { id: String(s.stream_id), name: s.name || '', logo: s.stream_icon || '', type: 'vod', ext: s.container_extension || 'mp4', cat: cat, adult: adult };
         return { id: String(s.series_id), name: s.name || '', logo: s.cover || '', type: 'series', cat: cat, adult: adult };
       });

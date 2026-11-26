@@ -1,4 +1,4 @@
-/* CactusNet TV — cargador con actualización desde GitHub (LG webOS y Samsung Tizen).
+/* Cactus — cargador con actualización desde GitHub (LG webOS y Samsung Tizen).
    La app instalada trae una copia completa. Al abrir:
      1) si hay guardada una versión más nueva descargada antes, se usa esa; si no, la copia instalada;
      2) unos segundos después revisa version.json en GitHub y, si hay una versión nueva, la descarga
